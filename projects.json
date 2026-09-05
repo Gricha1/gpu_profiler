@@ -1,0 +1,38 @@
+{
+  "lab_comp": [
+    "/home/reedgern"
+  ],
+  "ml3": [
+    "/home/ggorbov/safe_rl",
+    "/home/ggorbov/safe_rl/ITES",
+    "/home/ggorbov/safe_rl/SPEIS",
+    "/home/ggorbov/safe_rl_nlp",
+    "/home/ggorbov/safe_rl_nlp/safe_dynalang",
+    "/home/ggorbov/quantization/aent"
+  ],
+  "ml4": [
+    "/home/ggorbov/safe_rl",
+    "/home/ggorbov/safe_rl/ITES",
+    "/home/ggorbov/safe_rl/SPEIS",
+    "/home/ggorbov/safe_rl_nlp/craftext"
+  ],
+  "aicenteritl": [
+    "/home/gorbov_gv",
+    "/home/gorbov_gv/quantization",
+    "/home/gorbov_gv/quantization/async_speedup",
+    "/home/gorbov_gv/safe_rl_nlp"
+  ],
+  "aicenter1": [],
+  "aicenter2": [],
+  "aicenter3": [
+    "/home/gorbov_gv/quantization"
+  ],
+  "h200": [
+    "/data/homes/gorbov_gv/quantization",
+    "/data/homes/gorbov_gv/quantization/baselines",
+    "/data/homes/gorbov_gv/safe_rl_nlp"
+  ],
+  "local": [
+    "C:/Grisha/mipt/asp/NIR"
+  ]
+}
