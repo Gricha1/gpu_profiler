@@ -1,29 +1,24 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Remove Amnezia Wi-Fi hijack routes for NetBird / ZeroTier mesh overlays.
+  Remove Amnezia Wi-Fi hijack routes for NetBird / ZeroTier / OpenVPN(h200).
 
 .DESCRIPTION
-  Amnezia ExceptSites correctly adds WFP Allow Exclude for mesh CIDRs, but also
-  injects physical LAN routes (Wi-Fi/Ethernet -> gateway). That steals traffic
-  from wt0 / ZeroTier.
+  Amnezia ExceptSites adds WFP Allow Exclude, but also injects physical LAN routes
+  (Wi-Fi/Ethernet -> gateway). That steals traffic from wt0 / ZeroTier / OpenVPN TAP.
 
-  This script removes ONLY those hijack routes. It never touches:
-  - routes via wt0 / ZeroTier
+  Removes ONLY those hijack routes. Never touches:
+  - routes via wt0 / ZeroTier / OpenVPN TAP
   - default route, metrics, WFP, Amnezia, VK routes, other networks
 
 .PARAMETER WhatIf
   Dry-run: list candidates, delete nothing.
 
 .PARAMETER Quiet
-  Suppress TCP probe noise (watcher mode). Still prints removals unless -WhatIf.
+  Quieter output for watcher mode.
 
 .PARAMETER AsLibrary
-  Dot-source friendly: define functions only, do not run.
-
-.EXAMPLE
-  .\fix_mesh_routes.ps1 -WhatIf
-  .\fix_mesh_routes.ps1
+  Define functions only (dot-source).
 #>
 [CmdletBinding(SupportsShouldProcess = $false)]
 param(
@@ -34,50 +29,62 @@ param(
 
 $ErrorActionPreference = 'Continue'
 
-# Only mesh overlays requested for auto-fix (do NOT expand to other ZT nets here).
+# Targets: PrefixStarts = what Amnezia may hijack via Wi-Fi.
+# GoodRoutePrefixes = destinations on the good adapter that prove a safe path exists
+# (OpenVPN often covers h200 via 10.0.0.0/9, not only 10.0.116.11/32).
 $script:MeshTargets = @(
   @{
-    Name            = 'NetBird'
-    PrefixStarts    = @('100.98.')
-    GoodIfaceRegex  = '^wt0$'
-    ProbeIp         = '100.98.59.202'
+    Name              = 'NetBird'
+    StatusKey         = 'netbird_route'
+    PrefixStarts      = @('100.98.')
+    GoodRoutePrefixes = @('100.98.')
+    GoodIfaceRegex    = '^wt0$'
+    ProbeIp           = '100.98.59.202'
   },
   @{
-    Name            = 'ZeroTier'
-    PrefixStarts    = @('10.43.71.')
-    GoodIfaceRegex  = '^ZeroTier'
-    ProbeIp         = '10.43.71.7'
+    Name              = 'ZeroTier'
+    StatusKey         = 'zerotier_route'
+    PrefixStarts      = @('10.43.71.')
+    GoodRoutePrefixes = @('10.43.71.')
+    GoodIfaceRegex    = '^ZeroTier'
+    ProbeIp           = '10.43.71.7'
+  },
+  @{
+    Name              = 'OpenVPN-h200'
+    StatusKey         = 'h200_route'
+    PrefixStarts      = @('10.0.116.')
+    GoodRoutePrefixes = @('10.0.116.', '10.0.0.0/9')
+    GoodIfaceRegex    = 'outline-tap|OpenVPN|TAP-Windows'
+    ProbeIp           = '10.0.116.11'
   }
 )
 
-function Test-MeshPrefixMatch {
-  param([string]$DestinationPrefix, [string[]]$Starts)
-  foreach ($s in $Starts) {
-    if ($DestinationPrefix.StartsWith($s)) { return $true }
+function Test-RoutePrefixMatch {
+  param([string]$DestinationPrefix, [string[]]$Patterns)
+  foreach ($p in $Patterns) {
+    if ($p -match '/') {
+      if ($DestinationPrefix -eq $p) { return $true }
+    } elseif ($DestinationPrefix.StartsWith($p)) {
+      return $true
+    }
   }
   return $false
 }
 
 function Test-PhysicalMeshHijack {
-  <#
-    Hijack = mesh destination on a physical iface with a real NextHop (LAN gw),
-    and NOT on wt0 / ZeroTier.
-  #>
   param($Route, $Target)
 
-  if (-not (Test-MeshPrefixMatch -DestinationPrefix $Route.DestinationPrefix -Starts $Target.PrefixStarts)) {
+  if (-not (Test-RoutePrefixMatch -DestinationPrefix $Route.DestinationPrefix -Patterns $Target.PrefixStarts)) {
     return $false
   }
   if (-not $Route.NextHop -or $Route.NextHop -eq '0.0.0.0') { return $false }
   if ($Route.InterfaceAlias -match $Target.GoodIfaceRegex) { return $false }
-  # Never treat tunnel / virtual overlays as hijack targets
-  if ($Route.InterfaceAlias -match '^(wt0|ZeroTier|tun\d*|Wintun|Amnezia|Tailscale|vEthernet)') {
+  # Never treat tunnel / virtual overlays as hijack sources to delete
+  if ($Route.InterfaceAlias -match '^(wt0|ZeroTier|tun\d*|Wintun|Amnezia|Tailscale|vEthernet|outline-tap|OpenVPN|TAP-Windows)') {
     return $false
   }
-  # Physical Wi-Fi / Ethernet / LAN-looking adapters only (ASCII patterns;
-  # localized adapter names fall through to private NextHop check below).
+  # Physical Wi-Fi / Ethernet / LAN-looking adapters (ASCII); else private NextHop fallback
   if ($Route.InterfaceAlias -notmatch 'Wi-?Fi|WLAN|Wireless|Ethernet|Local Area') {
-    # Fallback: any non-overlay with private LAN next-hop still counts
     if ($Route.NextHop -notmatch '^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)') {
       return $false
     }
@@ -92,9 +99,12 @@ function Test-GoodMeshPathPresent {
   } | Select-Object -First 1
   if (-not $goodIface) { return $false }
 
+  $patterns = $Target.GoodRoutePrefixes
+  if (-not $patterns) { $patterns = $Target.PrefixStarts }
+
   $goodRoute = Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {
-    (Test-MeshPrefixMatch -DestinationPrefix $_.DestinationPrefix -Starts $Target.PrefixStarts) -and
-    ($_.InterfaceAlias -match $Target.GoodIfaceRegex)
+    ($_.InterfaceAlias -match $Target.GoodIfaceRegex) -and
+    (Test-RoutePrefixMatch -DestinationPrefix $_.DestinationPrefix -Patterns $patterns)
   } | Select-Object -First 1
   return [bool]$goodRoute
 }
@@ -107,6 +117,7 @@ function Get-MeshHijackRoutes {
       if (Test-PhysicalMeshHijack -Route $r -Target $t) {
         $hits += [pscustomobject]@{
           Target            = $t.Name
+          StatusKey         = $t.StatusKey
           DestinationPrefix = $r.DestinationPrefix
           InterfaceAlias    = $r.InterfaceAlias
           InterfaceIndex    = $r.InterfaceIndex
@@ -121,41 +132,39 @@ function Get-MeshHijackRoutes {
 }
 
 function Get-MeshRouteStatus {
-  <#
-    Returns hashtable netbird_route / zerotier_route = ok|hijacked|unknown|missing
-  #>
   $status = @{
     netbird_route  = 'unknown'
     zerotier_route = 'unknown'
+    h200_route     = 'unknown'
     details        = @()
   }
   $all = @(Get-NetRoute -AddressFamily IPv4 -ErrorAction SilentlyContinue)
   foreach ($t in $script:MeshTargets) {
-    $key = if ($t.Name -eq 'NetBird') { 'netbird_route' } else { 'zerotier_route' }
+    $key = $t.StatusKey
+    $patterns = $t.GoodRoutePrefixes
+    if (-not $patterns) { $patterns = $t.PrefixStarts }
+
     $hijacks = @($all | Where-Object { Test-PhysicalMeshHijack -Route $_ -Target $t })
     $good = @($all | Where-Object {
-      (Test-MeshPrefixMatch -DestinationPrefix $_.DestinationPrefix -Starts $t.PrefixStarts) -and
-      ($_.InterfaceAlias -match $t.GoodIfaceRegex)
+      ($_.InterfaceAlias -match $t.GoodIfaceRegex) -and
+      (Test-RoutePrefixMatch -DestinationPrefix $_.DestinationPrefix -Patterns $patterns)
     })
     $rt = Find-NetRoute -RemoteIPAddress $t.ProbeIp -ErrorAction SilentlyContinue | Select-Object -First 1
     $via = if ($rt) { $rt.InterfaceAlias } else { $null }
+
     if ($hijacks.Count -gt 0) {
       $status[$key] = 'hijacked'
-    } elseif ($good.Count -gt 0 -and $via -and ($via -match $t.GoodIfaceRegex)) {
-      $status[$key] = 'ok'
-    } elseif ($good.Count -gt 0 -and (-not $via -or $via -notmatch 'tun\d*')) {
-      # Prefer table presence on overlay adapter even if Find-NetRoute is noisy
-      $status[$key] = 'ok'
-      if (-not $via) { $via = $good[0].InterfaceAlias }
     } elseif ($good.Count -gt 0) {
-      # Overlay route exists; Find-NetRoute may transiently pick tun2 under Amnezia
       $status[$key] = 'ok'
-      $via = $good[0].InterfaceAlias
+      if (-not $via -or ($via -notmatch $t.GoodIfaceRegex)) {
+        $via = $good[0].InterfaceAlias
+      }
     } elseif (-not (Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' -and $_.Name -match $t.GoodIfaceRegex })) {
       $status[$key] = 'missing'
     } else {
       $status[$key] = 'unknown'
     }
+
     $status.details += [pscustomobject]@{
       target = $t.Name
       probe  = $t.ProbeIp
@@ -181,7 +190,7 @@ function Invoke-MeshRouteFix {
   foreach ($c in $candidates) {
     $msg = '{0}: {1} -> {2} -> {3}' -f $c.Target, $c.DestinationPrefix, $c.InterfaceAlias, $c.NextHop
     if (-not $c.GoodPathPresent) {
-      $warn = "WARN skip (no good mesh path present): $msg"
+      $warn = "WARN skip (no good overlay/OpenVPN path present): $msg"
       $result.warnings += $warn
       $result.skipped += $c
       if (-not $Quiet) { Write-Host $warn }

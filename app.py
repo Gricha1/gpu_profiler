@@ -299,13 +299,38 @@ def _vps_latency_ms(vpn_running: bool = False) -> float | None:
         return None
 
 
-def _vpn_service_state() -> str:
-    """Amnezia is ON only when an AmneziaWG tunnel service is Running.
+def _amnezia_tun2_up() -> bool:
+    """True when Amnezia Xray/tun2socks path is active (tun2 Up)."""
+    try:
+        out = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "@(Get-NetAdapter -Name 'tun2' -ErrorAction SilentlyContinue |"
+                " Where-Object { $_.Status -eq 'Up' }).Count",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            encoding="utf-8",
+            errors="replace",
+        )
+        return int((out.stdout or "0").strip().splitlines()[-1] or "0") > 0
+    except Exception:
+        return False
 
-    AmneziaVPN.exe / AmneziaVPN-service often stay resident after the app is
-    opened — that must NOT count as VPN connected (was showing dual ВКЛ).
+
+def _vpn_service_state() -> str:
+    """Amnezia connected: AmneziaWG tunnel service OR tun2 (Xray/tun2socks).
+
+    Do NOT treat AmneziaVPN.exe alone as connected — the GUI can sit idle.
     """
-    # Fast: enumerate only AmneziaWGTunnel* (not `sc query state= all`).
+    # Current Amnezia Full VPN on this machine uses tun2socks → tun2
+    if _amnezia_tun2_up():
+        return "Running"
+
+    # Legacy / alternate: AmneziaWGTunnel*
     try:
         out = subprocess.run(
             [

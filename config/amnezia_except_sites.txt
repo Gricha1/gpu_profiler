@@ -1,14 +1,17 @@
-# Amnezia site-based split tunneling exceptions.
+# Amnezia site-based split tunneling exceptions (REFERENCE ONLY).
 # Mode: VpnAllExceptSites — these go DIRECT (not through Full VPN).
-# Applied via scripts/amnezia/configure_split_tunnel.ps1 → HKCU Conf\ExceptSites
 #
-# Mesh overlays (CIDR) — required so kill-switch WFP installs "Allow Exclude route"
+# DO NOT write these into the Windows Registry from scripts.
+# Amnezia stores ExceptSites as a Qt @Variant REG_BINARY value on Conf.
+# Add / edit entries ONLY in the AmneziaVPN UI, then Disconnect → Connect.
+#
+# Mesh overlays (CIDR) — so kill-switch WFP can install "Allow Ecxlude route"
 100.98.0.0/16
 10.43.71.0/24
 192.168.194.0/24
 172.24.0.0/16
 #
-# VK — domains + CIDR so kill-switch WFP gets Allow Exclude even if DNS at Connect fails
+# VK — domains + CIDR (WFP Allow Exclude needs IPs/CIDRs Amnezia knows at Connect)
 vk.com
 www.vk.com
 m.vk.com
@@ -19,7 +22,20 @@ userapi.com
 vk-cdn.net
 vkuservideo.net
 queuev4.vk.com
-# VK / Mail.ru edge ranges commonly used by vk.com (domain exclude alone often did not install WFP permits)
+# VK / Mail.ru edge ranges commonly used by vk.com
 87.240.0.0/16
 93.186.224.0/20
 95.213.0.0/16
+# Yandex (direct; same split-tunnel / stale-gw issues as VK)
+yandex.ru
+www.yandex.ru
+ya.ru
+yandex.net
+yastatic.net
+77.88.0.0/16
+5.255.0.0/16
+87.250.0.0/16
+93.158.0.0/16
+213.180.0.0/16
+# OpenVPN Personal-2 h200 (watcher removes Wi-Fi hijack so path stays on OpenVPN TAP)
+10.0.116.11

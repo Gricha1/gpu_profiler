@@ -48,15 +48,17 @@ _base_ip_when_direct = _load_persisted_base()
 
 
 def amnezia_tunnel_active() -> bool:
-    """True only when an AmneziaWGTunnel* service is Running (not just GUI)."""
+    """True when Amnezia tunnel is up: tun2 (Xray/tun2socks) or AmneziaWGTunnel*."""
     try:
         out = subprocess.run(
             [
                 "powershell",
                 "-NoProfile",
                 "-Command",
-                "(Get-Service -Name 'AmneziaWGTunnel*' -ErrorAction SilentlyContinue |"
-                " Where-Object Status -eq 'Running' | Measure-Object).Count",
+                "$t=@(Get-NetAdapter -Name 'tun2' -EA SilentlyContinue | Where-Object Status -eq 'Up').Count;"
+                "if ($t -gt 0) { '1'; exit };"
+                "@(Get-Service -Name 'AmneziaWGTunnel*' -ErrorAction SilentlyContinue |"
+                " Where-Object Status -eq 'Running').Count",
             ],
             capture_output=True,
             text=True,
@@ -64,7 +66,7 @@ def amnezia_tunnel_active() -> bool:
             encoding="utf-8",
             errors="replace",
         )
-        return int((out.stdout or "0").strip() or "0") > 0
+        return int((out.stdout or "0").strip().splitlines()[-1] or "0") > 0
     except Exception:
         return False
 

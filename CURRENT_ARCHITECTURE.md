@@ -86,5 +86,8 @@ Dead hosts do not block the dashboard: UI gets placeholders / last cache while r
 
 - Task Scheduler name: **`GPUProfiler-MeshRouteWatcher`** (At logon, Highest, restart on failure)
 - On Amnezia Connect (tun2 up rising edge): settle 3s → remove only physical LAN hijacks for NetBird/ZT
-- Does **not** touch default route, metrics, WFP, VK routes, Amnezia, NetBird/ZT services
-- GPU Profiler UI shows watcher status read-only (no Start/Stop)
+- Also on **OpenVPN TAP Connect** (while Amnezia up): remove Wi‑Fi hijack for `10.0.116.*` so **h200** stays on OpenVPN (`outline-tap0` / TAP), not Wi‑Fi
+- Direct-site job: refresh stale VK/Yandex routes onto the **current** LAN/Wi‑Fi gateway (`fix_direct_site_routes.ps1`) — routes only
+- Does **not** touch default route, metrics, WFP / Block Internet, Amnezia Registry (`ExceptSites` REG_BINARY), NetBird/ZT services
+- Split-tunnel ExceptSites: add only via **AmneziaVPN UI** (never fake `Conf\ExceptSites` registry KEY)
+- GPU Profiler UI shows watcher status read-only (no Start/Stop), including **h200 / OpenVPN**, LAN gateway, VK/Yandex route state

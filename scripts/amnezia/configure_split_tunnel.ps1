@@ -1,37 +1,47 @@
 #Requires -Version 5.1
+<#
+.SYNOPSIS
+  READ-ONLY helper: show suggested Amnezia split-tunnel (ExceptSites) entries.
+
+.DESCRIPTION
+  This script does NOT write the Windows Registry and does NOT modify Amnezia config.
+
+  Amnezia stores ExceptSites as a Qt @Variant REG_BINARY value on:
+    HKCU\Software\AmneziaVPN.ORG\AmneziaVPN\Conf  (value name: ExceptSites)
+
+  Older versions of this script wrongly created a separate registry KEY
+    HKCU\...\Conf\ExceptSites\
+  with empty string values. Amnezia ignores that KEY. Do not recreate it.
+
+  Add / edit split-tunnel exceptions ONLY in the AmneziaVPN UI
+  (VpnAllExceptSites / sites exceptions), then Disconnect then Connect.
+
+  Reference list (human-readable): config\amnezia_except_sites.txt
+#>
 $ErrorActionPreference = 'Stop'
 $Here = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $Root = (Resolve-Path (Join-Path $Here '..\..')).Path
 $ListFile = Join-Path $Root 'config\amnezia_except_sites.txt'
-$Conf = 'HKCU:\Software\AmneziaVPN.ORG\AmneziaVPN\Conf'
-$ExceptKey = Join-Path $Conf 'ExceptSites'
 
-Write-Host "Root=$Root"
-Write-Host "ListFile=$ListFile exists=$(Test-Path $ListFile)"
+Write-Host '=== Amnezia split-tunnel helper (READ-ONLY) ==='
+Write-Host 'This script never writes Registry, WFP, or routes.'
+Write-Host 'Add ExceptSites only via AmneziaVPN UI, then Disconnect → Connect.'
+Write-Host ''
 
-if (-not (Test-Path $Conf)) { throw "Amnezia Conf registry missing: $Conf" }
-if (-not (Test-Path $ListFile)) { throw "Missing $ListFile" }
+if (-not (Test-Path $ListFile)) {
+  Write-Host "Reference list missing: $ListFile"
+  exit 1
+}
 
 $sites = Get-Content $ListFile |
   ForEach-Object { $_.Trim() } |
   Where-Object { $_ -and -not $_.StartsWith('#') }
-if (-not $sites.Count) { throw "No sites in $ListFile" }
 
-$backupDir = Join-Path $Root 'logs'
-New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
-$backup = Join-Path $backupDir ("amnezia_conf_backup_{0:yyyyMMdd_HHmmss}.reg" -f (Get-Date))
-reg export 'HKCU\Software\AmneziaVPN.ORG\AmneziaVPN\Conf' $backup /y | Out-Null
-Write-Host "Backup: $backup"
+Write-Host "Suggested entries from: $ListFile"
+Write-Host ("Count: {0}" -f $sites.Count)
+foreach ($s in $sites) { Write-Host "  - $s" }
 
-New-ItemProperty -Path $Conf -Name 'sitesSplitTunnelingEnabled' -PropertyType DWord -Value 1 -Force | Out-Null
-New-ItemProperty -Path $Conf -Name 'routeMode' -PropertyType DWord -Value 2 -Force | Out-Null
-
-if (Test-Path $ExceptKey) { Remove-Item $ExceptKey -Recurse -Force }
-New-Item -Path $ExceptKey -Force | Out-Null
-foreach ($s in $sites) {
-  New-ItemProperty -Path $ExceptKey -Name $s -PropertyType String -Value '' -Force | Out-Null
-  Write-Host "  ExceptSites += $s"
-}
-
-Write-Host ("Configured OK: routeMode=2 sitesSplitTunnelingEnabled=1 count={0}" -f $sites.Count)
-Write-Host 'NEXT: Disconnect then Connect in AmneziaVPN app, then ssh aicenter2'
+Write-Host ''
+Write-Host 'Active Amnezia ExceptSites = REG_BINARY on Conf (not a subkey).'
+Write-Host 'Do not create Conf\ExceptSites as a registry KEY.'
+exit 0

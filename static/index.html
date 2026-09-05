@@ -994,7 +994,7 @@
           <div class="vpn-mode-row" id="modeAmnezia">
             <div>
               <div class="vpn-mode-name">Amnezia Full VPN</div>
-              <div class="vpn-mode-desc">только статус · управление через приложение AmneziaVPN</div>
+              <div class="vpn-mode-desc">read-only · Connect/Disconnect только в AmneziaVPN</div>
             </div>
             <span class="vpn-mode-pill off" id="pillAmnezia">—</span>
           </div>
@@ -1008,7 +1008,7 @@
           <div class="vpn-mode-row" id="modeZerotier">
             <div>
               <div class="vpn-mode-name">ZeroTier mesh</div>
-              <div class="vpn-mode-desc">10.43.71.0/24 · health-check only</div>
+              <div class="vpn-mode-desc">10.43.71.0/24 · local overlay (lab via cds2 jump)</div>
             </div>
             <span class="vpn-mode-pill off" id="pillZerotier">—</span>
           </div>
@@ -1049,6 +1049,26 @@
           <div>
             <div class="vpn-label">ZeroTier route</div>
             <div class="vpn-value" id="mwZerotierRoute">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">h200 / OpenVPN</div>
+            <div class="vpn-value" id="mwH200Route">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">Current LAN gateway</div>
+            <div class="vpn-value" id="mwLanGw">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">VK direct</div>
+            <div class="vpn-value" id="mwVkRoute">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">Yandex direct</div>
+            <div class="vpn-value" id="mwYaRoute">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">Last gateway change</div>
+            <div class="vpn-value" id="mwGwChange">—</div>
           </div>
         </div>
 
@@ -1155,6 +1175,11 @@
     const mwLastFix = document.getElementById("mwLastFix");
     const mwNetbirdRoute = document.getElementById("mwNetbirdRoute");
     const mwZerotierRoute = document.getElementById("mwZerotierRoute");
+    const mwH200Route = document.getElementById("mwH200Route");
+    const mwLanGw = document.getElementById("mwLanGw");
+    const mwVkRoute = document.getElementById("mwVkRoute");
+    const mwYaRoute = document.getElementById("mwYaRoute");
+    const mwGwChange = document.getElementById("mwGwChange");
     const pillZerotier = document.getElementById("pillZerotier");
     const modeZerotier = document.getElementById("modeZerotier");
     const netCurrentIp = document.getElementById("netCurrentIp");
@@ -1634,9 +1659,9 @@
 
     function routeColor(v) {
       const s = String(v || "").toUpperCase();
-      if (s === "OK") return "var(--ok)";
-      if (s === "HIJACKED") return "var(--bad)";
-      if (s === "MISSING" || s === "STALE" || s === "ERROR") return "var(--warn)";
+      if (s === "OK" || s === "RUNNING") return "var(--ok)";
+      if (s === "HIJACKED" || s === "STALE" || s === "ERROR") return "var(--bad)";
+      if (s === "MISSING" || s === "UNKNOWN") return "var(--warn)";
       return "";
     }
 
@@ -1665,6 +1690,24 @@
           mwZerotierRoute.textContent = (data && data.zerotier_route) || "—";
           mwZerotierRoute.style.color = routeColor(data && data.zerotier_route);
         }
+        if (mwH200Route) {
+          mwH200Route.textContent = (data && data.h200_route) || "—";
+          mwH200Route.style.color = routeColor(data && data.h200_route);
+        }
+        if (mwLanGw) {
+          const gw = (data && data.lan_gateway) || "—";
+          const iface = (data && data.lan_iface) ? ` · ${data.lan_iface}` : "";
+          mwLanGw.textContent = gw === "—" ? "—" : `${gw}${iface}`;
+        }
+        if (mwVkRoute) {
+          mwVkRoute.textContent = (data && data.vk_route) || "—";
+          mwVkRoute.style.color = routeColor(data && data.vk_route);
+        }
+        if (mwYaRoute) {
+          mwYaRoute.textContent = (data && data.yandex_route) || "—";
+          mwYaRoute.style.color = routeColor(data && data.yandex_route);
+        }
+        if (mwGwChange) mwGwChange.textContent = (data && data.last_gateway_change) || "—";
       } catch (e) {
         if (pillMeshWatcher) {
           pillMeshWatcher.className = "vpn-mode-pill off";
