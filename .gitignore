@@ -9,6 +9,8 @@ venv/
 logs/
 *.log
 *.pid
+runtime/*.json
+!runtime/.gitkeep
 backup/
 *.zip
 gpu_monitor.zip

@@ -98,3 +98,63 @@ Generated: 2026-09-05T17:51:07.1927017+03:00
 - **Method:** POST /api/vpn/on
 - **Result:** Amnezia is managed only via the official AmneziaVPN app (read-only in GPU Profiler).
 
+## Mesh Route Watcher
+
+### W1_task_installed
+
+- **Status:** PASS
+- **Method:** Get-ScheduledTask GPUProfiler-MeshRouteWatcher
+- **Result:** Enabled / Running after install_mesh_route_watcher_task.ps1
+
+### W2_single_instance
+
+- **Status:** PASS
+- **Method:** count powershell cmdlines with mesh_route_watcher.ps1
+- **Result:** instances=1
+
+### W3_amnezia_up_auto_fix
+
+- **Status:** PASS
+- **Method:** watcher log on initial tun2 up
+- **Result:** removed NetBird 100.98.0.0/16 + 100.98.59.202/32 and ZeroTier 10.43.71.0/24 Wi‑Fi hijacks; preserved wt0
+
+### W4_netbird_route
+
+- **Status:** PASS
+- **Method:** Find-NetRoute 100.98.59.202 + TCP :22
+- **Result:** via=wt0, TCP OK
+
+### W5_zerotier_route
+
+- **Status:** PASS
+- **Method:** Get-NetRoute 10.43.71.* + TCP 10.43.71.7:22
+- **Result:** routes on ZeroTier One [...]; TCP OK
+
+### W6_whatif
+
+- **Status:** PASS
+- **Method:** fix_mesh_routes.ps1 -WhatIf
+- **Result:** lists candidates only (no delete)
+
+### W7_api_ui
+
+- **Status:** PASS
+- **Method:** GET /api/mesh/watcher-status
+- **Result:** status=RUNNING, task_scheduler=Enabled
+
+### W8_vk_untouched
+
+- **Status:** PARTIAL
+- **Method:** watcher does not delete 87.240/93.186 routes; VK curl may still fail if Amnezia kill-switch Block Internet is back
+- **Result:** watcher scope excludes VK (by design)
+
+### W9_reconnect_cycle
+
+- **Status:** NOT TESTED (manual Amnezia Disconnect→Connect left to user)
+- **Expected:** watcher Connect edge → fix again
+
+### W10_reboot_autostart
+
+- **Status:** NOT TESTED (no reboot)
+- **Expected:** AtLogon task starts watcher
+

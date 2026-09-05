@@ -65,4 +65,26 @@ Dead hosts do not block the dashboard: UI gets placeholders / last cache while r
 ```
 /api/network/public-ip  (45s cache, ipapi.co)
 /api/vpn/status         (proxy / Amnezia / NetBird flags; control only for ChatGPT proxy)
+/api/network/mesh-health
+/api/mesh/watcher-status  (read-only Mesh Route Watcher)
 ```
+
+## Mesh Route Watcher
+
+**Problem:** Amnezia `VpnAllExceptSites` for `100.98.0.0/16` and `10.43.71.0/24` installs needed WFP Allow Exclude, but also injects Wi‑Fi/LAN hijack routes that steal traffic from `wt0` / ZeroTier.
+
+**Fix (automatic):**
+
+| Piece | Path |
+|-------|------|
+| Safe fix | `scripts/amnezia/fix_mesh_routes.ps1` (`-WhatIf` dry-run) |
+| Watcher | `scripts/amnezia/mesh_route_watcher.ps1` |
+| Install task | `scripts/amnezia/install_mesh_route_watcher_task.ps1` |
+| Uninstall | `scripts/amnezia/uninstall_mesh_route_watcher_task.ps1` |
+| Heartbeat | `runtime/mesh_route_watcher_status.json` |
+| Log | `logs/mesh_route_watcher.log` |
+
+- Task Scheduler name: **`GPUProfiler-MeshRouteWatcher`** (At logon, Highest, restart on failure)
+- On Amnezia Connect (tun2 up rising edge): settle 3s → remove only physical LAN hijacks for NetBird/ZT
+- Does **not** touch default route, metrics, WFP, VK routes, Amnezia, NetBird/ZT services
+- GPU Profiler UI shows watcher status read-only (no Start/Stop)

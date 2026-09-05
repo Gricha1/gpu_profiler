@@ -2,6 +2,7 @@
 <#
 .SYNOPSIS
   Start GPU Profiler on 127.0.0.1:8765 if not already running, then open the UI.
+  Detached launch (cmd start) so closing the shortcut window does not kill uvicorn.
 #>
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -44,25 +45,28 @@ if (Test-LocalPort $Port) {
   exit 0
 }
 
-# Prefer pythonw-less visible minimized console via python -m uvicorn
 $pyCmd = Get-Command python -ErrorAction SilentlyContinue
 if (-not $pyCmd) { throw 'python not found on PATH' }
 $python = $pyCmd.Source
 
-$arg = "-m uvicorn app:app --host $HostAddr --port $Port"
-$proc = Start-Process -FilePath $python -ArgumentList $arg `
+# Detached via Start-Process so shortcut window can close without killing uvicorn.
+Start-Process -FilePath $python `
+  -ArgumentList @('-m', 'uvicorn', 'app:app', '--host', $HostAddr, '--port', "$Port") `
   -WorkingDirectory $Root `
-  -WindowStyle Minimized `
-  -PassThru `
+  -WindowStyle Hidden `
   -RedirectStandardOutput $OutLog `
-  -RedirectStandardError $ErrLog
+  -RedirectStandardError $ErrLog | Out-Null
 
-Set-Content -LiteralPath $PidFile -Value $proc.Id
-
-if (-not (Wait-HttpReady 35)) {
+if (-not (Wait-HttpReady 40)) {
   Write-Host "ERROR: GPU Profiler did not become ready. See $ErrLog"
   exit 1
 }
 
-Write-Host "GPU Profiler ready: $Url (pid=$($proc.Id))"
+# Record listener PID for stop.ps1
+try {
+  $pidListen = (Get-NetTCPConnection -LocalPort $Port -State Listen -EA Stop | Select-Object -First 1 -ExpandProperty OwningProcess)
+  if ($pidListen) { Set-Content -LiteralPath $PidFile -Value $pidListen }
+} catch {}
+
+Write-Host "GPU Profiler ready: $Url"
 Start-Process $Url

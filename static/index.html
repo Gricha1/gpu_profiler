@@ -1000,10 +1000,55 @@
           </div>
           <div class="vpn-mode-row" id="modeNetbird">
             <div>
-              <div class="vpn-mode-name">NetBird / ZeroTier</div>
-              <div class="vpn-mode-desc">mesh для SSH к серверам · read-only</div>
+              <div class="vpn-mode-name">NetBird mesh</div>
+              <div class="vpn-mode-desc">100.98.0.0/16 · health-check only</div>
             </div>
             <span class="vpn-mode-pill off" id="pillNetbird">—</span>
+          </div>
+          <div class="vpn-mode-row" id="modeZerotier">
+            <div>
+              <div class="vpn-mode-name">ZeroTier mesh</div>
+              <div class="vpn-mode-desc">10.43.71.0/24 · health-check only</div>
+            </div>
+            <span class="vpn-mode-pill off" id="pillZerotier">—</span>
+          </div>
+          <div class="vpn-mode-row" id="modeMeshWatcher">
+            <div>
+              <div class="vpn-mode-name">Mesh Route Watcher</div>
+              <div class="vpn-mode-desc">auto-fix Amnezia Wi‑Fi hijack · read-only</div>
+            </div>
+            <span class="vpn-mode-pill off" id="pillMeshWatcher">—</span>
+          </div>
+        </div>
+
+        <div class="vpn-metrics" id="meshWatcherBlock">
+          <div>
+            <div class="vpn-label">Watcher status</div>
+            <div class="vpn-value" id="mwStatus">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">Task Scheduler</div>
+            <div class="vpn-value" id="mwTask">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">PID</div>
+            <div class="vpn-value" id="mwPid">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">Last check</div>
+            <div class="vpn-value" id="mwLastCheck">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">Last fix</div>
+            <div class="vpn-value" id="mwLastFix">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">NetBird route</div>
+            <div class="vpn-value" id="mwNetbirdRoute">—</div>
+          </div>
+          <div>
+            <div class="vpn-label">ZeroTier route</div>
+            <div class="vpn-value" id="mwZerotierRoute">—</div>
           </div>
         </div>
 
@@ -1101,6 +1146,17 @@
     const pillAmnezia = document.getElementById("pillAmnezia");
     const pillProxy = document.getElementById("pillProxy");
     const pillNetbird = document.getElementById("pillNetbird");
+    const pillMeshWatcher = document.getElementById("pillMeshWatcher");
+    const modeMeshWatcher = document.getElementById("modeMeshWatcher");
+    const mwStatus = document.getElementById("mwStatus");
+    const mwTask = document.getElementById("mwTask");
+    const mwPid = document.getElementById("mwPid");
+    const mwLastCheck = document.getElementById("mwLastCheck");
+    const mwLastFix = document.getElementById("mwLastFix");
+    const mwNetbirdRoute = document.getElementById("mwNetbirdRoute");
+    const mwZerotierRoute = document.getElementById("mwZerotierRoute");
+    const pillZerotier = document.getElementById("pillZerotier");
+    const modeZerotier = document.getElementById("modeZerotier");
     const netCurrentIp = document.getElementById("netCurrentIp");
     const netBaseIp = document.getElementById("netBaseIp");
     const netLocation = document.getElementById("netLocation");
@@ -1517,7 +1573,13 @@
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
         const res = await fetch(url, { ...opts, signal: ctrl.signal });
-        return await res.json();
+        const data = await res.json();
+        if (!res.ok) {
+          const err = new Error((data && data.detail) || ("HTTP " + res.status));
+          err.status = res.status;
+          throw err;
+        }
+        return data;
       } finally {
         clearTimeout(timer);
       }
@@ -1539,6 +1601,76 @@
         renderPublicIp(data);
       } catch (e) {
         if (netVpnStatus) netVpnStatus.textContent = "lookup failed / offline";
+      }
+    }
+
+    function setMeshPill(pill, row, status) {
+      if (!pill) return;
+      const st = String(status || "—").toUpperCase();
+      const ok = st === "OK";
+      const blocked = st === "BLOCKED";
+      pill.className = "vpn-mode-pill " + (ok ? "on" : "off");
+      pill.textContent = st;
+      pill.style.color = ok ? "var(--ok)" : (blocked ? "var(--bad)" : "");
+      if (row) row.classList.toggle("on", ok);
+    }
+
+    async function loadMeshHealth() {
+      try {
+        const data = await fetchJson("/api/network/mesh-health", { cache: "no-store" }, 10000);
+        const nb = (data && data.summary && data.summary.netbird) || (data && data.netbird && data.netbird.status) || "—";
+        const zt = (data && data.summary && data.summary.zerotier) || (data && data.zerotier && data.zerotier.status) || "—";
+        setMeshPill(pillNetbird, modeNetbird, nb);
+        setMeshPill(pillZerotier, modeZerotier, zt);
+        if (data && data.netbird && data.netbird.hint && nb === "BLOCKED" && vpnNote) {
+          vpnNote.textContent = data.netbird.hint;
+          vpnNote.className = "vpn-note warn";
+        }
+      } catch (e) {
+        setMeshPill(pillNetbird, modeNetbird, "ERR");
+        setMeshPill(pillZerotier, modeZerotier, "ERR");
+      }
+    }
+
+    function routeColor(v) {
+      const s = String(v || "").toUpperCase();
+      if (s === "OK") return "var(--ok)";
+      if (s === "HIJACKED") return "var(--bad)";
+      if (s === "MISSING" || s === "STALE" || s === "ERROR") return "var(--warn)";
+      return "";
+    }
+
+    async function loadMeshWatcher() {
+      try {
+        const data = await fetchJson("/api/mesh/watcher-status", { cache: "no-store" }, 8000);
+        const st = String((data && data.status) || "—").toUpperCase();
+        if (pillMeshWatcher) {
+          const ok = st === "RUNNING";
+          const bad = st === "ERROR" || st === "STALE";
+          pillMeshWatcher.className = "vpn-mode-pill " + (ok ? "on" : "off");
+          pillMeshWatcher.textContent = st;
+          pillMeshWatcher.style.color = ok ? "var(--ok)" : (bad ? "var(--bad)" : "");
+        }
+        if (modeMeshWatcher) modeMeshWatcher.classList.toggle("on", st === "RUNNING");
+        if (mwStatus) { mwStatus.textContent = st; mwStatus.style.color = routeColor(st === "RUNNING" ? "OK" : st); }
+        if (mwTask) mwTask.textContent = (data && data.task_scheduler) || "—";
+        if (mwPid) mwPid.textContent = (data && data.pid) ? String(data.pid) : "—";
+        if (mwLastCheck) mwLastCheck.textContent = (data && data.last_check) || "—";
+        if (mwLastFix) mwLastFix.textContent = (data && data.last_fix) || "—";
+        if (mwNetbirdRoute) {
+          mwNetbirdRoute.textContent = (data && data.netbird_route) || "—";
+          mwNetbirdRoute.style.color = routeColor(data && data.netbird_route);
+        }
+        if (mwZerotierRoute) {
+          mwZerotierRoute.textContent = (data && data.zerotier_route) || "—";
+          mwZerotierRoute.style.color = routeColor(data && data.zerotier_route);
+        }
+      } catch (e) {
+        if (pillMeshWatcher) {
+          pillMeshWatcher.className = "vpn-mode-pill off";
+          pillMeshWatcher.textContent = "ERR";
+        }
+        if (mwStatus) mwStatus.textContent = "ERR";
       }
     }
 
@@ -1999,9 +2131,13 @@
     loadProjects();
     loadVpnStatus();
     loadPublicIp();
+    loadMeshHealth();
+    loadMeshWatcher();
     tick();
     setInterval(tick, 5000);
     setInterval(loadPublicIp, 45000);
+    setInterval(loadMeshHealth, 15000);
+    setInterval(loadMeshWatcher, 10000);
   </script>
 </body>
 </html>

@@ -83,3 +83,11 @@ VPN secrets/binaries remain outside the repo in `~/.ssh/timeweb-vpn` by design.
 - Desktop Amnezia shortcuts still call `timeweb-vpn` scripts (intentional; outside Profiler)
 - `sing-box.exe` and SS credentials remain in `~/.ssh/timeweb-vpn` (must never be committed)
 - Optional Cursor SDK needs `CURSOR_API_KEY` in `.env`
+- Amnezia reconnect recreates kill-switch / may re-inject mesh hijack routes — mitigated by **Mesh Route Watcher** task
+
+## 9. Mesh Route Watcher (added)
+
+- Installed Scheduled Task `GPUProfiler-MeshRouteWatcher`
+- Auto-removes Amnezia Wi‑Fi hijack routes for `100.98.*` / `10.43.71.*` after Connect
+- Status API: `GET /api/mesh/watcher-status`
+- UI Network card: read-only Mesh Route Watcher block

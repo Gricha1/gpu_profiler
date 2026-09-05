@@ -1,0 +1,25 @@
+# Amnezia site-based split tunneling exceptions.
+# Mode: VpnAllExceptSites — these go DIRECT (not through Full VPN).
+# Applied via scripts/amnezia/configure_split_tunnel.ps1 → HKCU Conf\ExceptSites
+#
+# Mesh overlays (CIDR) — required so kill-switch WFP installs "Allow Exclude route"
+100.98.0.0/16
+10.43.71.0/24
+192.168.194.0/24
+172.24.0.0/16
+#
+# VK — domains + CIDR so kill-switch WFP gets Allow Exclude even if DNS at Connect fails
+vk.com
+www.vk.com
+m.vk.com
+api.vk.com
+login.vk.com
+id.vk.com
+userapi.com
+vk-cdn.net
+vkuservideo.net
+queuev4.vk.com
+# VK / Mail.ru edge ranges commonly used by vk.com (domain exclude alone often did not install WFP permits)
+87.240.0.0/16
+93.186.224.0/20
+95.213.0.0/16

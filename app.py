@@ -38,6 +38,8 @@ from host_paths import (
     zerotier_networks,
 )
 from services import proxy_manager
+from services.mesh_health import get_mesh_health
+from services.mesh_watcher_status import get_watcher_status
 from services.public_ip import get_public_ip_status
 
 HOSTS = [
@@ -1663,8 +1665,8 @@ async def _refresh_cache() -> None:
 @app.on_event("startup")
 async def _startup_probe_local() -> None:
     asyncio.create_task(_refresh_local())
-    # Ensure protected ZT routes exist even before any VPN click.
-    asyncio.create_task(asyncio.to_thread(apply_protected_routes))
+    # Do NOT auto-rewrite routes on startup. Overlay breakage is usually Amnezia
+    # kill-switch WFP (WSAEACCES), not missing routes — see mesh health API.
 
 
 @app.post("/api/protect-routes")
@@ -1688,6 +1690,18 @@ async def chatgpt_pac() -> Response:
 async def api_public_ip(force: bool = False) -> dict[str, Any]:
     """Cached public IP / geo / VPN mode. Does not spam external APIs."""
     return await asyncio.to_thread(get_public_ip_status, force=force)
+
+
+@app.get("/api/network/mesh-health")
+async def api_mesh_health(force: bool = False) -> dict[str, Any]:
+    """NetBird / ZeroTier TCP health. Diagnose only — never mutates routes."""
+    return await asyncio.to_thread(get_mesh_health, force=force)
+
+
+@app.get("/api/mesh/watcher-status")
+async def api_mesh_watcher_status() -> dict[str, Any]:
+    """Read-only Mesh Route Watcher status (Task Scheduler + heartbeat JSON)."""
+    return await asyncio.to_thread(get_watcher_status)
 
 
 @app.get("/api/metrics")
@@ -1825,11 +1839,14 @@ async def vpn_status() -> dict[str, Any]:
 
 
 def _vpn_action_guard(fn_name: str, result: dict[str, Any]) -> dict[str, Any]:
-    """After any VPN toggle, re-apply protected ZT/NetBird routes so SSH paths survive."""
-    protect_out = apply_protected_routes()
+    """Annotate VPN/proxy actions. Do not rewrite overlay routes automatically."""
     result = dict(result)
-    result["protected_routes"] = protect_out[-400:] if protect_out else ""
     result["action"] = fn_name
+    # Mesh status is informational only (WFP/kill-switch diagnosis).
+    try:
+        result["mesh"] = get_mesh_health(force=False).get("summary")
+    except Exception:
+        result["mesh"] = None
     return result
 
 
