@@ -42,6 +42,7 @@ from services.mesh_health import get_mesh_health
 from services.mesh_watcher_status import get_watcher_status, start_mesh_watcher
 from services.public_ip import get_public_ip_status
 from services.quotas import aggregator as quotas_aggregator
+import user_tracking
 
 HOSTS = [
     "lab_comp",
@@ -1777,6 +1778,49 @@ async def api_quotas_refresh(debug: bool = False) -> dict[str, Any]:
 async def api_quotas_config(body: _QuotasConfigBody) -> dict[str, Any]:
     """Persist MiniMax API key to `.env` (gitignored). Never echoes it back."""
     return await asyncio.to_thread(quotas_aggregator.set_minimax_config, body.api_key)
+
+
+class _TrackVisitBody(BaseModel):
+    username: str = Field(default="", description="Username to track")
+
+
+@app.post("/api/track/visit")
+async def track_visit(body: _TrackVisitBody) -> dict[str, Any]:
+    """Track a user visit. Returns visit stats."""
+    return await asyncio.to_thread(user_tracking.track_visit, body.username)
+
+
+@app.get("/api/track/users")
+async def list_users() -> dict[str, Any]:
+    """List all tracked users."""
+    users = await asyncio.to_thread(user_tracking.get_all_users)
+    return {"users": users}
+
+
+class _UserSettingsBody(BaseModel):
+    username: str
+    settings: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/api/track/settings")
+async def save_user_settings(body: _UserSettingsBody) -> dict[str, Any]:
+    """Save per-user settings."""
+    ok = await asyncio.to_thread(user_tracking.update_settings, body.username, body.settings)
+    return {"ok": ok}
+
+
+@app.get("/api/track/settings/{username}")
+async def get_user_settings(username: str) -> dict[str, Any]:
+    """Get per-user settings."""
+    user = await asyncio.to_thread(user_tracking.get_user, username)
+    if not user:
+        return {"settings": {}}
+    import json
+    try:
+        settings = json.loads(user.get("settings") or "{}")
+    except Exception:
+        settings = {}
+    return {"settings": settings}
 
 
 @app.get("/api/metrics")

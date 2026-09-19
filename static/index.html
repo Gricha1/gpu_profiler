@@ -91,9 +91,8 @@
     .meta strong { color: var(--accent); font-weight: 600; }
     .header-actions {
       display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       grid-template-areas:
-        "quotas vpn"
         "quotas meta"
         "quotas sheet";
       align-items: start;
@@ -102,7 +101,6 @@
       max-width: 980px;
     }
     .header-actions > .quotas-card { grid-area: quotas; }
-    .header-actions > .vpn-card    { grid-area: vpn; }
     .header-actions > .meta       { grid-area: meta; justify-self: end; }
     .header-actions > .sheet-btn   { grid-area: sheet; justify-self: end; }
     @media (max-width: 980px) {
@@ -110,7 +108,6 @@
         grid-template-columns: 1fr;
         grid-template-areas:
           "quotas"
-          "vpn"
           "meta"
           "sheet";
         max-width: 100%;
@@ -1110,143 +1107,6 @@
           <div class="quotas-sub" id="quotasSettingsMsg"></div>
         </div>
       </section>
-      <section class="vpn-card" id="vpnCard">
-        <div class="vpn-head">
-          <div>
-            <div class="vpn-title">Network</div>
-            <div class="vpn-sub" id="vpnActiveSub">загрузка…</div>
-          </div>
-          <span class="vpn-badge" id="vpnBadge">—</span>
-        </div>
-
-        <div class="vpn-modes">
-          <div class="vpn-mode-row" id="modeProxy">
-            <div>
-              <div class="vpn-mode-name">ChatGPT Proxy</div>
-              <div class="vpn-mode-desc">PAC → :10808 → VPS · остальной трафик напрямую</div>
-            </div>
-            <span class="vpn-mode-pill off" id="pillProxy">ВЫКЛ</span>
-            <div class="vpn-mode-btns">
-              <button type="button" class="vpn-btn primary" id="sshVpnOnBtn">Start</button>
-              <button type="button" class="vpn-btn danger" id="sshVpnOffBtn">Stop</button>
-            </div>
-          </div>
-          <div class="vpn-mode-row" id="modeAmnezia">
-            <div>
-              <div class="vpn-mode-name">Amnezia Full VPN</div>
-              <div class="vpn-mode-desc">read-only · Connect/Disconnect только в AmneziaVPN</div>
-            </div>
-            <span class="vpn-mode-pill off" id="pillAmnezia">—</span>
-          </div>
-          <div class="vpn-mode-row" id="modeNetbird">
-            <div>
-              <div class="vpn-mode-name">NetBird mesh</div>
-              <div class="vpn-mode-desc">100.98.0.0/16 · health-check only</div>
-            </div>
-            <span class="vpn-mode-pill off" id="pillNetbird">—</span>
-          </div>
-          <div class="vpn-mode-row" id="modeZerotier">
-            <div>
-              <div class="vpn-mode-name">ZeroTier mesh</div>
-              <div class="vpn-mode-desc">10.43.71.0/24 · local overlay (lab via cds2 jump)</div>
-            </div>
-            <span class="vpn-mode-pill off" id="pillZerotier">—</span>
-          </div>
-          <div class="vpn-mode-row" id="modeMeshWatcher">
-            <div>
-              <div class="vpn-mode-name">Mesh Route Watcher</div>
-              <div class="vpn-mode-desc">auto-fix Amnezia Wi‑Fi hijack</div>
-            </div>
-            <span class="vpn-mode-pill off" id="pillMeshWatcher">—</span>
-            <div class="vpn-mode-btns">
-              <button type="button" class="vpn-btn primary" id="meshWatcherStartBtn" hidden>Start</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="vpn-metrics" id="meshWatcherBlock">
-          <div>
-            <div class="vpn-label">Watcher status</div>
-            <div class="vpn-value" id="mwStatus">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Task Scheduler</div>
-            <div class="vpn-value" id="mwTask">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">PID</div>
-            <div class="vpn-value" id="mwPid">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Last check</div>
-            <div class="vpn-value" id="mwLastCheck">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Last fix</div>
-            <div class="vpn-value" id="mwLastFix">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">NetBird route</div>
-            <div class="vpn-value" id="mwNetbirdRoute">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">ZeroTier route</div>
-            <div class="vpn-value" id="mwZerotierRoute">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">h200 / OpenVPN</div>
-            <div class="vpn-value" id="mwH200Route">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Current LAN gateway</div>
-            <div class="vpn-value" id="mwLanGw">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">VK direct</div>
-            <div class="vpn-value" id="mwVkRoute">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Yandex direct</div>
-            <div class="vpn-value" id="mwYaRoute">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Last gateway change</div>
-            <div class="vpn-value" id="mwGwChange">—</div>
-          </div>
-        </div>
-
-        <div class="vpn-metrics" id="publicIpBlock">
-          <div>
-            <div class="vpn-label">Current public IP</div>
-            <div class="vpn-value" id="netCurrentIp">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Base IP (no Amnezia)</div>
-            <div class="vpn-value" id="netBaseIp">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Location</div>
-            <div class="vpn-value" id="netLocation">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Provider / ASN</div>
-            <div class="vpn-value" id="netOrg">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">VPN status</div>
-            <div class="vpn-value" id="netVpnStatus">—</div>
-          </div>
-          <div>
-            <div class="vpn-label">Mode</div>
-            <div class="vpn-value" id="netMode">—</div>
-          </div>
-        </div>
-        <div class="vpn-note" id="vpnNote">—</div>
-        <div class="zt-box" id="ztBox" hidden>
-          <div>ZeroTier</div>
-          <div class="zt-row" id="ztRow"></div>
-        </div>
-      </section>
       <a
         class="sheet-btn"
         href="https://docs.google.com/spreadsheets/d/1baFc689VyDzY6ypWmkuE6At0Jbp4YVKpLLFgjvgmokU/edit?gid=1200214015#gid=1200214015"
@@ -1674,9 +1534,6 @@
           }).join("") + `</div>`;
         }
       }
-
-      if (isLocal) body += cursorBox("local", { agent: false });
-      else body += cursorBox(s.host);
 
       return `<section class="server server-${escapeHtml(s.host)}"${firstPaint ? "" : ' style="animation:none"'}>
         <div class="server-head">
@@ -2308,21 +2165,12 @@
           updateOnlineBadges(data.servers || []);
           return;
         }
-        grid.innerHTML = (data.servers || []).map(renderServer).join("");
+        grid.innerHTML = (data.servers || []).filter(s => !s.local && s.host !== "local").map(renderServer).join("");
         restoreScrollPositions();
         firstPaint = false;
-        if (Array.isArray(data.zerotier) && data.zerotier.length) {
-          ztBox.hidden = false;
-          ztRow.innerHTML = data.zerotier.map((z) => {
-            const label = `${z.name || z.nwid.slice(0, 8)} ${z.status}${(z.ips && z.ips[0]) ? " " + z.ips[0] : ""}`;
-            return `<span class="path-chip ${z.ok ? "ok" : "bad"}" title="${escapeHtml(z.nwid)}">${escapeHtml(label)}</span>`;
-          }).join("");
-        }
       } catch (e) {
         updatedEl.textContent = "ошибка опроса";
       }
-      loadVpnStatus();
-      loadPublicIp();
       loadQuotas();
     }
 
@@ -2627,25 +2475,24 @@
       loadQuotas();
     }, 30000);
 
-    sshVpnOnBtn.addEventListener("click", () => vpnAction("/api/vpn/ssh/on", "sshVpnOnBtn", "starting…"));
-    sshVpnOffBtn.addEventListener("click", () => vpnAction("/api/vpn/ssh/off", "sshVpnOffBtn", "stopping…"));
-    if (meshWatcherStartBtn) {
-      meshWatcherStartBtn.addEventListener("click", async () => {
-        await vpnAction("/api/mesh/watcher-start", "meshWatcherStartBtn", "starting…");
-        await loadMeshWatcher();
-      });
-    }
     loadProjects();
-    loadVpnStatus();
-    loadPublicIp();
-    loadMeshHealth();
-    loadMeshWatcher();
     loadQuotas();
     tick();
     setInterval(tick, 5000);
-    setInterval(loadPublicIp, 45000);
-    setInterval(loadMeshHealth, 15000);
-    setInterval(loadMeshWatcher, 10000);
+
+    // User tracking
+    (function initTracking() {
+      let username = localStorage.getItem("gpu_monitor_username");
+      if (!username) {
+        username = "user_" + Math.random().toString(36).substring(2, 10);
+        localStorage.setItem("gpu_monitor_username", username);
+      }
+      fetch("/api/track/visit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username })
+      }).catch(() => {});
+    })();
   </script>
 </body>
 </html>
