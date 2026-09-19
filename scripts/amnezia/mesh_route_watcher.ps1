@@ -72,6 +72,8 @@ function Write-StatusFile([hashtable]$Fields) {
     openvpn_up           = [bool]$Fields['openvpn_up']
     netbird_route        = $Fields['netbird_route']
     zerotier_route       = $Fields['zerotier_route']
+    zerotier_home_route  = $Fields['zerotier_home_route']
+    zerotier_172_route   = $Fields['zerotier_172_route']
     h200_route           = $Fields['h200_route']
     lan_gateway          = $Fields['lan_gateway']
     lan_iface            = $Fields['lan_iface']
@@ -105,6 +107,8 @@ function Update-RouteStatusFields([hashtable]$State) {
     $st = Get-MeshRouteStatus
     $State.netbird_route = $st.netbird_route
     $State.zerotier_route = $st.zerotier_route
+    $State.zerotier_home_route = $st.zerotier_home_route
+    $State.zerotier_172_route = $st.zerotier_172_route
     $State.h200_route = $st.h200_route
   } catch {}
   try {
@@ -124,6 +128,8 @@ $state = @{
   openvpn_up          = $false
   netbird_route       = 'unknown'
   zerotier_route      = 'unknown'
+  zerotier_home_route = 'unknown'
+  zerotier_172_route  = 'unknown'
   h200_route          = 'unknown'
   lan_gateway         = $null
   lan_iface           = $null
@@ -193,9 +199,22 @@ try {
       $lastSafety = $now
       $state.last_check = $now.ToString('o')
       $hijacks = @(Get-MeshHijackRoutes)
-      if ($hijacks.Count -gt 0) {
+      $meshSt = $null
+      try { $meshSt = Get-MeshRouteStatus } catch {}
+      $tun2Steal = $false
+      if ($meshSt) {
+        foreach ($k in @('zerotier_route','zerotier_home_route','zerotier_172_route')) {
+          if ([string]$meshSt[$k] -eq 'tun2_steal') { $tun2Steal = $true; break }
+        }
+      }
+      if ($hijacks.Count -gt 0 -or $tun2Steal) {
         $doMesh = $true
-        $reason = ('safety: {0} mesh hijack(s)' -f $hijacks.Count)
+        if ($tun2Steal -and $hijacks.Count -eq 0) {
+          $reason = 'safety: ZeroTier tun2_steal (self-nexthop vs Amnezia /1)'
+        } else {
+          $reason = ('safety: {0} mesh hijack(s)' -f $hijacks.Count)
+          if ($tun2Steal) { $reason = "$reason + tun2_steal" }
+        }
       }
       $stale = @(Get-DirectSiteStaleRoutes -Lan $lan)
       if ($stale.Count -gt 0) {
@@ -220,9 +239,12 @@ try {
           foreach ($r in @($fix.removed)) {
             Write-WatcherLog ("mesh removed: {0} {1} -> {2} -> {3}" -f $r.Target, $r.DestinationPrefix, $r.InterfaceAlias, $r.NextHop)
           }
-          if (@($fix.removed).Count -gt 0) {
+          foreach ($r in @($fix.repaired)) {
+            Write-WatcherLog ("mesh repaired: {0} {1} {2}" -f $r.Target, $r.Action, $r.DestinationPrefix)
+          }
+          if ((@($fix.removed).Count + @($fix.repaired).Count) -gt 0) {
             $state.last_fix = (Get-Date).ToString('o')
-            Write-WatcherLog ('mesh fix complete removed={0}' -f $fix.removed.Count)
+            Write-WatcherLog ('mesh fix complete removed={0} repaired={1}' -f @($fix.removed).Count, @($fix.repaired).Count)
           } else {
             Write-WatcherLog 'mesh: no hijack routes'
           }
@@ -286,6 +308,8 @@ try {
       openvpn_up = $false
       netbird_route = $state.netbird_route
       zerotier_route = $state.zerotier_route
+      zerotier_home_route = $state.zerotier_home_route
+      zerotier_172_route = $state.zerotier_172_route
       h200_route = $state.h200_route
       lan_gateway = $state.lan_gateway
       lan_iface = $state.lan_iface

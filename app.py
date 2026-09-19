@@ -39,8 +39,9 @@ from host_paths import (
 )
 from services import proxy_manager
 from services.mesh_health import get_mesh_health
-from services.mesh_watcher_status import get_watcher_status
+from services.mesh_watcher_status import get_watcher_status, start_mesh_watcher
 from services.public_ip import get_public_ip_status
+from services.quotas import aggregator as quotas_aggregator
 
 HOSTS = [
     "lab_comp",
@@ -1690,6 +1691,9 @@ async def _refresh_cache() -> None:
 @app.on_event("startup")
 async def _startup_probe_local() -> None:
     asyncio.create_task(_refresh_local())
+    # Fire-and-forget first quota refresh so the UI shows real numbers
+    # on first paint rather than placeholders.
+    asyncio.create_task(asyncio.to_thread(quotas_aggregator.refresh_now))
     # Do NOT auto-rewrite routes on startup. Overlay breakage is usually Amnezia
     # kill-switch WFP (WSAEACCES), not missing routes — see mesh health API.
 
@@ -1725,8 +1729,54 @@ async def api_mesh_health(force: bool = False) -> dict[str, Any]:
 
 @app.get("/api/mesh/watcher-status")
 async def api_mesh_watcher_status() -> dict[str, Any]:
-    """Read-only Mesh Route Watcher status (Task Scheduler + heartbeat JSON)."""
+    """Mesh Route Watcher status (Task Scheduler + heartbeat JSON)."""
     return await asyncio.to_thread(get_watcher_status)
+
+
+@app.post("/api/mesh/watcher-start")
+async def api_mesh_watcher_start() -> dict[str, Any]:
+    """Start GPUProfiler-MeshRouteWatcher via Task Scheduler (enable if needed)."""
+    return await asyncio.to_thread(start_mesh_watcher)
+
+
+# ---------------------------------------------------------------------------
+# AI Coding Quotas (MiniMax / Kimi / Codex)
+# ---------------------------------------------------------------------------
+
+
+class _QuotasConfigBody(BaseModel):
+    api_key: str | None = None
+
+
+@app.get("/api/quotas")
+async def api_quotas(debug: bool = False) -> dict[str, Any]:
+    """Return cached AI Coding Quotas snapshot (refreshes in background)."""
+    snap = await asyncio.to_thread(quotas_aggregator.get_snapshot)
+    return {
+        "ok": True,
+        "providers": {
+            p: res.to_dict(debug=debug) for p, res in snap.items()
+        },
+        "config": await asyncio.to_thread(quotas_aggregator.get_minimal_config),
+    }
+
+
+@app.post("/api/quotas/refresh")
+async def api_quotas_refresh(debug: bool = False) -> dict[str, Any]:
+    """Force a refresh of all quota collectors and return the new snapshot."""
+    snap = await asyncio.to_thread(quotas_aggregator.refresh_now)
+    return {
+        "ok": True,
+        "providers": {
+            p: res.to_dict(debug=debug) for p, res in snap.items()
+        },
+    }
+
+
+@app.post("/api/quotas/config")
+async def api_quotas_config(body: _QuotasConfigBody) -> dict[str, Any]:
+    """Persist MiniMax API key to `.env` (gitignored). Never echoes it back."""
+    return await asyncio.to_thread(quotas_aggregator.set_minimax_config, body.api_key)
 
 
 @app.get("/api/metrics")

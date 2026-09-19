@@ -90,10 +90,33 @@
     }
     .meta strong { color: var(--accent); font-weight: 600; }
     .header-actions {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+      grid-template-areas:
+        "quotas vpn"
+        "quotas meta"
+        "quotas sheet";
+      align-items: start;
+      justify-items: stretch;
       gap: 0.55rem;
+      max-width: 980px;
+    }
+    .header-actions > .quotas-card { grid-area: quotas; }
+    .header-actions > .vpn-card    { grid-area: vpn; }
+    .header-actions > .meta       { grid-area: meta; justify-self: end; }
+    .header-actions > .sheet-btn   { grid-area: sheet; justify-self: end; }
+    @media (max-width: 980px) {
+      .header-actions {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "quotas"
+          "vpn"
+          "meta"
+          "sheet";
+        max-width: 100%;
+      }
+      .header-actions > .meta { justify-self: start; text-align: left; }
+      .header-actions > .sheet-btn { justify-self: start; }
     }
     .sheet-btn {
       display: inline-flex;
@@ -272,6 +295,98 @@
       padding-top: 0.55rem;
       border-top: 1px solid var(--line);
     }
+
+    /* AI Coding Quotas card */
+    .quotas-card { margin-top: 0.95rem; padding-top: 0.85rem; border-top: 1px solid var(--line); }
+    .quotas-head { display: flex; align-items: end; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.6rem; }
+    .quotas-title { font-weight: 700; font-size: 0.92rem; letter-spacing: 0.02em; }
+    .quotas-sub { font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem; }
+    .quotas-actions { display: flex; gap: 0.35rem; align-items: center; }
+    .quotas-btn {
+      background: rgba(94,200,192,0.12);
+      color: var(--accent);
+      border: 1px solid rgba(94,200,192,0.35);
+      border-radius: 8px;
+      padding: 0.28rem 0.6rem;
+      font-size: 0.74rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 160ms ease, border-color 160ms ease;
+    }
+    .quotas-btn:hover { background: rgba(94,200,192,0.22); border-color: rgba(94,200,192,0.6); }
+    .quotas-btn[disabled] { opacity: 0.5; cursor: progress; }
+    .quotas-list { display: grid; gap: 0.55rem; }
+    .quota {
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(13, 19, 26, 0.55);
+    }
+    .quota-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4rem;
+      margin-bottom: 0.3rem;
+    }
+    .quota-name { font-weight: 600; font-size: 0.85rem; }
+    .quota-pill {
+      padding: 0.16rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.66rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: rgba(255,255,255,0.03);
+      text-transform: uppercase;
+    }
+    .quota-pill.ok          { color: var(--ok);   background: var(--ok-dim);   border-color: rgba(61,214,140,0.35); }
+    .quota-pill.stale       { color: var(--warn); background: rgba(232,184,74,0.12); border-color: rgba(232,184,74,0.35); }
+    .quota-pill.bad         { color: var(--bad);  background: var(--bad-dim);  border-color: rgba(255,107,107,0.35); }
+    .quota-window { display: grid; grid-template-columns: 4.6rem 1fr 6rem; gap: 0.4rem 0.55rem; align-items: center; font-size: 0.78rem; padding: 0.16rem 0; }
+    .quota-window + .quota-window { border-top: 1px dashed rgba(148,163,184,0.10); padding-top: 0.32rem; margin-top: 0.16rem; }
+    .quota-win-label { color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 0.74rem; }
+    .quota-bar { height: 8px; background: rgba(148,163,184,0.12); border-radius: 999px; overflow: hidden; position: relative; }
+    .quota-bar-fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 999px; transition: width 320ms ease; }
+    .quota-bar-fill.low  { background: var(--bar); }
+    .quota-bar-fill.mid  { background: var(--bar-mid); }
+    .quota-bar-fill.hi   { background: var(--bar-hi); }
+    .quota-pct { font-family: "JetBrains Mono", monospace; font-size: 0.74rem; text-align: right; color: var(--ink); }
+    .quota-meta { font-size: 0.7rem; color: var(--muted); margin-top: 0.32rem; display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; }
+    .quota-reset { font-family: "JetBrains Mono", monospace; color: var(--ink); }
+    .quota-err { font-size: 0.72rem; color: var(--bad); margin-top: 0.25rem; }
+
+    /* Standard-row layout: 5h / 7d / Monthly, always shown. */
+    .quota-rows { display: grid; gap: 0.4rem; margin-top: 0.35rem; }
+    .quota-row {
+      display: grid;
+      grid-template-columns: 4.6rem 1fr 9rem;
+      gap: 0.5rem 0.6rem;
+      align-items: center;
+      font-size: 0.8rem;
+      padding: 0.25rem 0.1rem;
+    }
+    .quota-row + .quota-row { border-top: 1px dashed rgba(148,163,184,0.10); }
+    .quota-row-label { color: var(--ink); font-family: "JetBrains Mono", monospace; font-size: 0.78rem; font-weight: 600; }
+    .quota-row-meta { font-size: 0.74rem; text-align: right; }
+    .quota-row-sub { font-size: 0.7rem; color: var(--muted); font-family: "JetBrains Mono", monospace; margin-top: 0.1rem; }
+    .quota-row-extra { opacity: 0.85; }
+    .quota-row-extra .quota-row-label { color: var(--muted); font-weight: 500; }
+    .quotas-settings { display: grid; gap: 0.35rem; margin-top: 0.45rem; font-size: 0.78rem; }
+    .quotas-settings input {
+      width: 100%;
+      background: rgba(8,12,18,0.6);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.32rem 0.45rem;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.74rem;
+    }
+    .quotas-settings input:focus { outline: none; border-color: rgba(94,200,192,0.6); }
+    .quotas-settings label { font-size: 0.7rem; color: var(--muted); }
+    .quotas-settings .row { display: grid; grid-template-columns: 1fr; gap: 0.3rem; }
 
     main {
       max-width: 1600px;
@@ -970,6 +1085,31 @@
       <div class="sub">VRAM · utilization · RAM по серверам</div>
     </div>
     <div class="header-actions">
+      <section class="quotas-card" id="quotasCard" aria-label="AI Coding Quotas">
+        <div class="quotas-head">
+          <div>
+            <div class="quotas-title">AI Coding Quotas</div>
+            <div class="quotas-sub" id="quotasSub">loading…</div>
+          </div>
+          <div class="quotas-actions">
+            <button type="button" class="quotas-btn" id="quotasRefreshBtn">Refresh</button>
+            <button type="button" class="quotas-btn" id="quotasSettingsBtn" title="Configure MiniMax Token Plan">⚙</button>
+          </div>
+        </div>
+        <div class="quotas-list" id="quotasList"></div>
+        <div class="quotas-settings" id="quotasSettings" hidden>
+          <div class="row">
+            <label for="quotaMinimaxKey">MiniMax API key (sk-cp-…)</label>
+            <input id="quotaMinimaxKey" type="password" autocomplete="off"
+                   placeholder="sk-cp-…" />
+          </div>
+          <div class="quotas-actions" style="justify-content: flex-end;">
+            <button type="button" class="quotas-btn" id="quotasSettingsSaveBtn">Save</button>
+            <button type="button" class="quotas-btn" id="quotasSettingsCancelBtn">Cancel</button>
+          </div>
+          <div class="quotas-sub" id="quotasSettingsMsg"></div>
+        </div>
+      </section>
       <section class="vpn-card" id="vpnCard">
         <div class="vpn-head">
           <div>
@@ -1015,9 +1155,12 @@
           <div class="vpn-mode-row" id="modeMeshWatcher">
             <div>
               <div class="vpn-mode-name">Mesh Route Watcher</div>
-              <div class="vpn-mode-desc">auto-fix Amnezia Wi‑Fi hijack · read-only</div>
+              <div class="vpn-mode-desc">auto-fix Amnezia Wi‑Fi hijack</div>
             </div>
             <span class="vpn-mode-pill off" id="pillMeshWatcher">—</span>
+            <div class="vpn-mode-btns">
+              <button type="button" class="vpn-btn primary" id="meshWatcherStartBtn" hidden>Start</button>
+            </div>
           </div>
         </div>
 
@@ -1168,6 +1311,7 @@
     const pillNetbird = document.getElementById("pillNetbird");
     const pillMeshWatcher = document.getElementById("pillMeshWatcher");
     const modeMeshWatcher = document.getElementById("modeMeshWatcher");
+    const meshWatcherStartBtn = document.getElementById("meshWatcherStartBtn");
     const mwStatus = document.getElementById("mwStatus");
     const mwTask = document.getElementById("mwTask");
     const mwPid = document.getElementById("mwPid");
@@ -1222,6 +1366,7 @@
     const VPN_BTN_LABELS = {
       sshVpnOnBtn: "Start",
       sshVpnOffBtn: "Stop",
+      meshWatcherStartBtn: "Start",
     };
 
     function setModeRow(row, pill, on) {
@@ -1665,6 +1810,13 @@
       return "";
     }
 
+    function setMeshWatcherStartVisible(st, canStart) {
+      if (!meshWatcherStartBtn) return;
+      const show = canStart === true || st === "ERROR" || st === "STALE" || st === "STOPPED" || st === "ERR";
+      meshWatcherStartBtn.hidden = !show;
+      meshWatcherStartBtn.disabled = vpnBusyAction === "meshWatcherStartBtn";
+    }
+
     async function loadMeshWatcher() {
       try {
         const data = await fetchJson("/api/mesh/watcher-status", { cache: "no-store" }, 8000);
@@ -1677,6 +1829,7 @@
           pillMeshWatcher.style.color = ok ? "var(--ok)" : (bad ? "var(--bad)" : "");
         }
         if (modeMeshWatcher) modeMeshWatcher.classList.toggle("on", st === "RUNNING");
+        setMeshWatcherStartVisible(st, data && data.can_start);
         if (mwStatus) { mwStatus.textContent = st; mwStatus.style.color = routeColor(st === "RUNNING" ? "OK" : st); }
         if (mwTask) mwTask.textContent = (data && data.task_scheduler) || "—";
         if (mwPid) mwPid.textContent = (data && data.pid) ? String(data.pid) : "—";
@@ -1714,6 +1867,7 @@
           pillMeshWatcher.textContent = "ERR";
         }
         if (mwStatus) mwStatus.textContent = "ERR";
+        setMeshWatcherStartVisible("ERR", true);
       }
     }
 
@@ -1724,7 +1878,9 @@
       setVpnBtnState(btn, true, busyLabel);
       vpnNote.textContent = busyLabel + "…";
       try {
-        const timeoutMs = endpoint.includes("/off") ? 25000 : 12000;
+        const timeoutMs = endpoint.includes("/off")
+          ? 25000
+          : (endpoint.includes("watcher-start") ? 35000 : 12000);
         const data = await fetchJson(endpoint, { method: "POST" }, timeoutMs);
         if (data && data.ok === false) {
           vpnNote.textContent = data.error || "ошибка действия";
@@ -2167,15 +2323,324 @@
       }
       loadVpnStatus();
       loadPublicIp();
+      loadQuotas();
     }
+
+    // -------- AI Coding Quotas panel --------
+    const quotasList = document.getElementById("quotasList");
+    const quotasSub = document.getElementById("quotasSub");
+    const quotasRefreshBtn = document.getElementById("quotasRefreshBtn");
+    const quotasSettingsBtn = document.getElementById("quotasSettingsBtn");
+    const quotasSettings = document.getElementById("quotasSettings");
+    const quotasSettingsSaveBtn = document.getElementById("quotasSettingsSaveBtn");
+    const quotasSettingsCancelBtn = document.getElementById("quotasSettingsCancelBtn");
+    const quotasSettingsMsg = document.getElementById("quotasSettingsMsg");
+    const quotasMinimaxKeyInput = document.getElementById("quotaMinimaxKey");
+
+    const QUOTA_STATUS_LABEL = {
+      ok: "OK",
+      not_configured: "Not configured",
+      not_logged_in: "Not logged in",
+      cli_not_found: "CLI not found",
+      api_unavailable: "API unavailable",
+      rate_limited: "Rate limited",
+      stale: "Stale",
+      error: "Error",
+    };
+
+    function fmtAgo(iso) {
+      if (!iso) return "—";
+      const t = Date.parse(iso);
+      if (!Number.isFinite(t)) return "—";
+      const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+      if (s < 60) return `${s}s ago`;
+      const m = Math.round(s / 60);
+      if (m < 60) return `${m}m ago`;
+      const h = Math.floor(m / 60);
+      const mr = m % 60;
+      return `${h}h ${mr.toString().padStart(2, "0")}m ago`;
+    }
+
+    function fmtCountdown(resetIso) {
+      if (!resetIso) return null;
+      const t = Date.parse(resetIso);
+      if (!Number.isFinite(t)) return null;
+      let sec = Math.max(0, Math.round((t - Date.now()) / 1000));
+      const d = Math.floor(sec / 86400); sec -= d * 86400;
+      const h = Math.floor(sec / 3600);  sec -= h * 3600;
+      const m = Math.floor(sec / 60);
+      if (d > 0) return `${d}d ${h.toString().padStart(2, "0")}h`;
+      if (h > 0) return `${h}h ${m.toString().padStart(2, "0")}m`;
+      return `${m}m`;
+    }
+
+    function barClass(used) {
+      if (used < 60) return "low";
+      if (used < 85) return "mid";
+      return "hi";
+    }
+
+    function pillClass(status, stale) {
+      if (stale) return "stale";
+      if (status === "ok") return "ok";
+      if (status === "rate_limited" || status === "api_unavailable" || status === "error") return "bad";
+      return "";
+    }
+
+    function pillText(status, stale) {
+      if (stale) return "STALE";
+      return QUOTA_STATUS_LABEL[status] || status || "—";
+    }
+
+    // Map a provider window to one of the standard UI rows by
+    // window_seconds. Returns the row key or null if the window
+    // doesn't fit a standard row.
+    function rowKeyForWindow(w) {
+      const ws = Number(w.window_seconds) || 0;
+      if (ws === 18000) return "5h";
+      if (ws === 604800) return "7d";
+      if (ws === 2592000 || ws === 2678400 || ws === 2419200) return "monthly";
+      return null;
+    }
+
+    // All windows matching a row key (e.g. Kimi has 2 monthly windows).
+    function pickWindows(windows, key) {
+      if (!Array.isArray(windows)) return [];
+      return windows.filter((w) => rowKeyForWindow(w) === key);
+    }
+
+    function renderStandardRow(rowKey, label, w, extraClass = "") {
+      if (!w) {
+        return `
+          <div class="quota-row ${extraClass}" data-row="${escapeHtml(rowKey)}">
+            <div class="quota-row-label">${escapeHtml(label)}</div>
+            <div class="quota-bar"><div class="quota-bar-fill" style="width:0%; background: rgba(148,163,184,0.20)"></div></div>
+            <div class="quota-row-meta">
+              <div class="quota-pct">Not provided by provider</div>
+            </div>
+          </div>`;
+      }
+      const used = Number(w.used_percent);
+      const remaining = Number(w.remaining_percent);
+      const cls = barClass(Number.isFinite(used) ? used : 0);
+      const cd = w.reset_in_seconds != null
+        ? fmtCountdownSec(w.reset_in_seconds)
+        : fmtCountdown(w.reset_at);
+      const usedStr = Number.isFinite(used) ? `${used.toFixed(0)}%` : "—";
+      const remStr = Number.isFinite(remaining) ? `${remaining.toFixed(0)}%` : "—";
+      const resetTxt = cd ? `reset in ${cd}` : "";
+      return `
+        <div class="quota-row ${extraClass}" data-row="${escapeHtml(rowKey)}">
+          <div class="quota-row-label">${escapeHtml(label)}</div>
+          <div class="quota-bar"><div class="quota-bar-fill ${cls}" style="width:${Math.max(2, Number.isFinite(used) ? used : 0).toFixed(1)}%"></div></div>
+          <div class="quota-row-meta">
+            <div class="quota-pct"><strong>${usedStr} used</strong> · ${remStr} remaining</div>
+            ${resetTxt ? `<div class="quota-row-sub">${resetTxt}</div>` : ""}
+          </div>
+        </div>`;
+    }
+
+    function renderExtraRow(w) {
+      const used = Number(w.used_percent);
+      const remaining = Number(w.remaining_percent);
+      const cls = barClass(Number.isFinite(used) ? used : 0);
+      const usedStr = Number.isFinite(used) ? `${used.toFixed(0)}%` : "—";
+      const remStr = Number.isFinite(remaining) ? `${remaining.toFixed(0)}%` : "—";
+      const cd = w.reset_in_seconds != null
+        ? fmtCountdownSec(w.reset_in_seconds)
+        : fmtCountdown(w.reset_at);
+      const lbl = w.label && w.label !== "Window" ? w.label : (w.id && w.id !== "window" ? w.id : "Window");
+      return `
+        <div class="quota-row quota-row-extra" data-row="${escapeHtml(w.id || 'extra')}">
+          <div class="quota-row-label">${escapeHtml(lbl)}</div>
+          <div class="quota-bar"><div class="quota-bar-fill ${cls}" style="width:${Math.max(2, Number.isFinite(used) ? used : 0).toFixed(1)}%"></div></div>
+          <div class="quota-row-meta">
+            <div class="quota-pct"><strong>${usedStr} used</strong> · ${remStr} remaining</div>
+            ${cd ? `<div class="quota-row-sub">reset in ${cd}</div>` : ""}
+          </div>
+        </div>`;
+    }
+
+    function renderExtrasRows(windows) {
+      if (!Array.isArray(windows)) return "";
+      const extras = windows.filter((w) => !rowKeyForWindow(w));
+      return extras.map(renderExtraRow).join("");
+    }
+
+    function fmtCountdownSec(sec) {
+      sec = Math.max(0, Math.round(sec));
+      const d = Math.floor(sec / 86400); sec -= d * 86400;
+      const h = Math.floor(sec / 3600);  sec -= h * 3600;
+      const m = Math.floor(sec / 60);
+      if (d > 0) return `${d}d ${h.toString().padStart(2, "0")}h`;
+      if (h > 0) return `${h}h ${m.toString().padStart(2, "0")}m`;
+      return `${m}m`;
+    }
+
+    function renderProviderCard(p, prov) {
+      const status = prov.status || "error";
+      const stale = !!prov.stale;
+      const pill = pillClass(status, stale);
+      const label = prov.display_name || p;
+      const plan = prov.plan_type ? ` · ${escapeHtml(prov.plan_type)}` : "";
+      const windows = Array.isArray(prov.windows) ? prov.windows : [];
+
+      // 5h / 7d — first matching window only.
+      const w5 = pickWindows(windows, "5h")[0] || null;
+      const w7 = pickWindows(windows, "7d")[0] || null;
+      // Monthly — show ALL matching windows (Kimi has Monthly total +
+      // Monthly code). Always render the section, even when empty.
+      const monthly = pickWindows(windows, "monthly");
+
+      let rowsHtml = "";
+      rowsHtml += renderStandardRow("5h", "5h", w5);
+      rowsHtml += renderStandardRow("7d", "7d", w7);
+      if (monthly.length === 0) {
+        rowsHtml += renderStandardRow("monthly", "Monthly", null);
+      } else {
+        monthly.forEach((w, i) => {
+          const sub = monthly.length > 1 ? ` (${i + 1}/${monthly.length})` : "";
+          const lbl = (w.label && w.label !== "Window") ? w.label + sub : "Monthly" + sub;
+          rowsHtml += renderStandardRow(`monthly_${i}`, lbl, w);
+        });
+      }
+      // Non-standard extras (code_review_window, etc.).
+      rowsHtml += renderExtrasRows(windows);
+
+      const metaBits = [`updated ${fmtAgo(prov.updated_at || prov.last_success_iso)}`];
+      if (stale) metaBits.push("stale · using last successful result");
+      if (prov.source) metaBits.push(escapeHtml(prov.source));
+      const errHtml = prov.last_error
+        ? `<div class="quota-err">${escapeHtml(prov.last_error)}</div>`
+        : "";
+
+      return `
+        <div class="quota" data-provider="${escapeHtml(p)}">
+          <div class="quota-head">
+            <div class="quota-name">${escapeHtml(label)}${plan}</div>
+            <div class="quota-pill ${pill}">${escapeHtml(pillText(status, stale))}</div>
+          </div>
+          <div class="quota-rows">
+            ${rowsHtml}
+          </div>
+          <div class="quota-meta">${metaBits.join(" · ")}</div>
+          ${errHtml}
+        </div>`;
+    }
+
+    function renderQuotas(snapshot) {
+      if (!quotasList) return;
+      const providers = (snapshot && snapshot.providers) || {};
+      const order = ["minimax", "kimi", "codex"];
+      const cards = order
+        .filter((p) => providers[p])
+        .map((p) => renderProviderCard(p, providers[p]))
+        .join("");
+      quotasList.innerHTML = cards || '<div class="quota-meta">No data yet.</div>';
+
+      const anyOk = order.some((p) => providers[p] && providers[p].status === "ok" && !providers[p].stale);
+      const anyStale = order.some((p) => providers[p] && providers[p].stale);
+      const cfg = (snapshot && snapshot.config) || {};
+      const refreshTxt = cfg.refresh_sec ? `auto-refresh ≈ every ${Math.round(cfg.refresh_sec)}s` : "auto-refresh";
+      if (quotasSub) {
+        if (anyOk) quotasSub.textContent = refreshTxt;
+        else if (anyStale) quotasSub.textContent = "stale · waiting for next refresh";
+        else quotasSub.textContent = "providers unavailable — see status";
+      }
+    }
+
+    async function loadQuotas(opts = {}) {
+      if (!quotasList) return;
+      const force = !!opts.force;
+      const url = force ? "/api/quotas/refresh" : "/api/quotas";
+      try {
+        const res = await fetchJson(url, { method: force ? "POST" : "GET", cache: "no-store" }, 12000);
+        if (!res || !res.ok) {
+          if (quotasSub) quotasSub.textContent = "fetch error";
+          return;
+        }
+        renderQuotas(res);
+      } catch (e) {
+        if (quotasSub) quotasSub.textContent = "fetch error: " + (e && e.message || "");
+      }
+    }
+
+    if (quotasRefreshBtn) {
+      quotasRefreshBtn.addEventListener("click", async () => {
+        quotasRefreshBtn.disabled = true;
+        try {
+          await loadQuotas({ force: true });
+        } finally {
+          quotasRefreshBtn.disabled = false;
+        }
+      });
+    }
+
+    if (quotasSettingsBtn) {
+      quotasSettingsBtn.addEventListener("click", () => {
+        quotasSettings.hidden = !quotasSettings.hidden;
+        if (!quotasSettings.hidden) {
+          quotasMinimaxKeyInput.value = "";
+          quotasSettingsMsg.textContent = "Key is stored only in .env (gitignored) and never sent back.";
+        }
+      });
+    }
+    if (quotasSettingsCancelBtn) {
+      quotasSettingsCancelBtn.addEventListener("click", () => {
+        quotasSettings.hidden = true;
+      });
+    }
+    if (quotasSettingsSaveBtn) {
+      quotasSettingsSaveBtn.addEventListener("click", async () => {
+        quotasSettingsSaveBtn.disabled = true;
+        quotasSettingsMsg.textContent = "saving…";
+        try {
+          const api_key = quotasMinimaxKeyInput.value.trim() || null;
+          if (!api_key) {
+            quotasSettingsMsg.textContent = "enter the MiniMax API key";
+            return;
+          }
+          const res = await fetchJson("/api/quotas/config",
+            { method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ api_key }) }, 8000);
+          if (res && res.ok) {
+            quotasSettingsMsg.textContent = "saved — refreshing…";
+            quotasSettings.hidden = true;
+            await loadQuotas({ force: true });
+          } else {
+            quotasSettingsMsg.textContent = (res && res.error) || "save failed";
+          }
+        } catch (e) {
+          quotasSettingsMsg.textContent = "save error: " + (e && e.message || "");
+        } finally {
+          quotasSettingsSaveBtn.disabled = false;
+        }
+      });
+    }
+
+    // Reset-countdown is local — recompute every minute without a fetch.
+    setInterval(() => {
+      const card = document.getElementById("quotasCard");
+      if (!card) return;
+      // Force a re-render by re-fetching the snapshot (cache hit, fast).
+      loadQuotas();
+    }, 30000);
 
     sshVpnOnBtn.addEventListener("click", () => vpnAction("/api/vpn/ssh/on", "sshVpnOnBtn", "starting…"));
     sshVpnOffBtn.addEventListener("click", () => vpnAction("/api/vpn/ssh/off", "sshVpnOffBtn", "stopping…"));
+    if (meshWatcherStartBtn) {
+      meshWatcherStartBtn.addEventListener("click", async () => {
+        await vpnAction("/api/mesh/watcher-start", "meshWatcherStartBtn", "starting…");
+        await loadMeshWatcher();
+      });
+    }
     loadProjects();
     loadVpnStatus();
     loadPublicIp();
     loadMeshHealth();
     loadMeshWatcher();
+    loadQuotas();
     tick();
     setInterval(tick, 5000);
     setInterval(loadPublicIp, 45000);

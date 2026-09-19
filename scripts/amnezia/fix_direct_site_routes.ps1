@@ -1,7 +1,8 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Refresh VK/Yandex Amnezia split-tunnel routes onto the CURRENT LAN/Wi-Fi gateway.
+  Refresh direct-site Amnezia split-tunnel routes onto the CURRENT LAN/Wi-Fi gateway
+  (VK/Yandex + OpenVPN Personal-2 endpoints).
 
 .DESCRIPTION
   Does NOT touch WFP / kill-switch / Block Internet.
@@ -25,13 +26,15 @@ $ErrorActionPreference = 'Continue'
 
 $script:TunnelLike = 'tun|wt0|ZeroTier|vEthernet|Loopback|Tailscale|Wintun|Amnezia|outline-tap|OpenVPN|TAP-Windows'
 
-# Canonical covering CIDRs used with Amnezia ExceptSites for VK / Yandex
+# Canonical covering CIDRs / hosts for Amnezia ExceptSites direct paths
 $script:DirectSiteCidrs = @(
   @{ Name = 'VK';     Cidrs = @('87.240.0.0/16', '93.186.224.0/20', '95.213.0.0/16') },
-  @{ Name = 'Yandex'; Cidrs = @('77.88.0.0/16', '5.255.0.0/16', '87.250.0.0/16', '93.158.0.0/16', '213.180.0.0/16') }
+  @{ Name = 'Yandex'; Cidrs = @('77.88.0.0/16', '5.255.0.0/16', '87.250.0.0/16', '93.158.0.0/16', '213.180.0.0/16') },
+  # OpenVPN Personal-2 endpoints (must not nest via Amnezia tun2)
+  @{ Name = 'OpenVPN'; Cidrs = @('185.178.210.151/32', '185.178.210.152/32') }
 )
 
-$script:DirectPrefixMatch = '^(87\.240\.|93\.186\.|95\.213\.|77\.88\.|5\.255\.|87\.250\.|93\.158\.|213\.180\.)'
+$script:DirectPrefixMatch = '^(87\.240\.|93\.186\.|95\.213\.|77\.88\.|5\.255\.|87\.250\.|93\.158\.|213\.180\.|185\.178\.210\.)'
 
 function Get-CurrentLanGateway {
   <#
@@ -84,7 +87,11 @@ function Get-DirectSiteRouteStatus {
   $status.stale_count = $stale.Count
 
   foreach ($group in $script:DirectSiteCidrs) {
-    $key = if ($group.Name -eq 'VK') { 'vk_route' } else { 'yandex_route' }
+    $key = switch ($group.Name) {
+      'VK' { 'vk_route' }
+      'Yandex' { 'yandex_route' }
+      default { $null }
+    }
     $okCover = $false
     foreach ($c in $group.Cidrs) {
       $hit = Get-NetRoute -DestinationPrefix $c -ErrorAction SilentlyContinue |
@@ -95,22 +102,17 @@ function Get-DirectSiteRouteStatus {
       foreach ($c in $group.Cidrs) {
         if ($_.DestinationPrefix -eq $c -or $_.DestinationPrefix.StartsWith(($c.Split('/')[0] -replace '\.0$','.'))) { return $true }
       }
-      # prefix family match
       $p = $_.DestinationPrefix
       if ($group.Name -eq 'VK' -and $p -match '^(87\.240|93\.186|95\.213)') { return $true }
       if ($group.Name -eq 'Yandex' -and $p -match '^(77\.88|5\.255|87\.250|93\.158|213\.180)') { return $true }
+      if ($group.Name -eq 'OpenVPN' -and $p -match '^185\.178\.210\.(151|152)') { return $true }
       return $false
     })
-    if ($groupStale.Count -gt 0) {
-      $status[$key] = 'stale'
-    } elseif ($okCover) {
-      $status[$key] = 'ok'
-    } else {
-      $status[$key] = 'missing'
-    }
+    $state = if ($groupStale.Count -gt 0) { 'stale' } elseif ($okCover) { 'ok' } else { 'missing' }
+    if ($key) { $status[$key] = $state }
     $status.details += [pscustomobject]@{
       site  = $group.Name
-      state = $status[$key]
+      state = $state
       via   = $lan.NextHop
     }
   }

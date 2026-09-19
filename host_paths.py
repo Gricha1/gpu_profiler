@@ -251,8 +251,12 @@ def probe_path(path: dict[str, Any]) -> dict[str, Any]:
         if not ok:
             base["detail"] = f"tcp {tcp[0]}:{tcp[1]} closed"
             return base
-        # Secondary paths: open TCP is enough for "IP live" chip (skip slow SSH).
-        if not path.get("prefer_for_probe") and not path.get("require_ssh"):
+        # TCP connect alone is NOT SSH. Only skip SSH when explicitly tcp_only.
+        if (
+            path.get("tcp_only")
+            and not path.get("prefer_for_probe")
+            and not path.get("require_ssh")
+        ):
             base["ok"] = True
             base["ms"] = ms
             base["detail"] = "tcp open"

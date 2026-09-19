@@ -2,8 +2,14 @@
 <#
 .SYNOPSIS
   Start GPU Profiler on 127.0.0.1:8765 if not already running, then open the UI.
-  Detached launch (cmd start) so closing the shortcut window does not kill uvicorn.
+  Detached launch so closing a console does not kill uvicorn.
+
+.PARAMETER NoBrowser
+  Start backend only (used by GPU Profiler.exe launcher, which opens the UI itself).
 #>
+[CmdletBinding()]
+param([switch]$NoBrowser)
+
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $HostAddr = '127.0.0.1'
@@ -41,7 +47,7 @@ function Wait-HttpReady([int]$TimeoutSec = 30) {
 
 if (Test-LocalPort $Port) {
   Write-Host "GPU Profiler already running on $Url"
-  Start-Process $Url
+  if (-not $NoBrowser) { Start-Process $Url }
   exit 0
 }
 
@@ -69,4 +75,4 @@ try {
 } catch {}
 
 Write-Host "GPU Profiler ready: $Url"
-Start-Process $Url
+if (-not $NoBrowser) { Start-Process $Url }

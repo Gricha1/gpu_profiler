@@ -40,7 +40,8 @@
       "ip": "192.168.194.7",
       "port": 22,
       "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["192.168.194.7", 22]
+      "tcp": ["192.168.194.7", 22],
+      "require_ssh": true
     },
     {
       "id": "zt_172",

@@ -1,4 +1,4 @@
-"""Read-only Mesh Route Watcher status for GPU Profiler UI."""
+"""Mesh Route Watcher status + start for GPU Profiler UI."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ STATUS_PATH = ROOT / "runtime" / "mesh_route_watcher_status.json"
 PID_FILE = ROOT / "runtime" / "mesh_route_watcher.pid"
 TASK_NAME = "GPUProfiler-MeshRouteWatcher"
 STALE_SEC = 90.0
+INSTALL_HINT = "scripts\\amnezia\\install_mesh_route_watcher_task.ps1 (Admin)"
 
 
 def _parse_iso(ts: str | None) -> float | None:
@@ -64,6 +65,36 @@ def _pid_alive(pid: int | None) -> bool:
         return (out.stdout or "").strip() == "1"
     except Exception:
         return False
+
+
+def _live_watcher_pids() -> list[int]:
+    """PIDs of powershell hosting mesh_route_watcher.ps1 (CommandLine match)."""
+    try:
+        out = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                r"""
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -EA SilentlyContinue |
+  Where-Object { $_.CommandLine -and $_.CommandLine -like '*mesh_route_watcher.ps1*' } |
+  ForEach-Object { $_.ProcessId }
+""",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=8.0,
+            encoding="utf-8",
+            errors="replace",
+        )
+        pids: list[int] = []
+        for line in (out.stdout or "").splitlines():
+            line = line.strip()
+            if line.isdigit():
+                pids.append(int(line))
+        return pids
+    except Exception:
+        return []
 
 
 def _task_info() -> dict[str, Any]:
@@ -134,10 +165,20 @@ def get_watcher_status() -> dict[str, Any]:
         except Exception:
             pid = None
 
+    status_pid = pid
     alive = _pid_alive(pid)
+    if not alive:
+        live = _live_watcher_pids()
+        if live:
+            pid = live[0]
+            alive = True
     ts = _parse_iso(raw.get("ts"))
     age = (time.time() - ts) if ts else None
     stale = age is not None and age > STALE_SEC
+    # Live process with stale/old heartbeat JSON (common right after Start)
+    if alive and status_pid != pid:
+        stale = False
+        age = 0.0
 
     if not task.get("installed"):
         ui_status = "STOPPED"
@@ -146,6 +187,10 @@ def get_watcher_status() -> dict[str, Any]:
         ui_status = "STOPPED"
         task_label = "Disabled"
     elif alive and not stale and raw.get("running", True):
+        ui_status = "RUNNING"
+        task_label = task.get("task_scheduler") or "Enabled"
+    elif alive and status_pid != pid:
+        # New process, heartbeat not refreshed yet
         ui_status = "RUNNING"
         task_label = task.get("task_scheduler") or "Enabled"
     elif alive and stale:
@@ -188,6 +233,8 @@ def get_watcher_status() -> dict[str, Any]:
         "amnezia_up": raw.get("amnezia_up"),
         "netbird_route": str(raw.get("netbird_route") or "unknown").upper(),
         "zerotier_route": str(raw.get("zerotier_route") or "unknown").upper(),
+        "zerotier_home_route": str(raw.get("zerotier_home_route") or "unknown").upper(),
+        "zerotier_172_route": str(raw.get("zerotier_172_route") or "unknown").upper(),
         "h200_route": str(raw.get("h200_route") or "unknown").upper(),
         "openvpn_up": raw.get("openvpn_up"),
         "lan_gateway": raw.get("lan_gateway"),
@@ -199,4 +246,100 @@ def get_watcher_status() -> dict[str, Any]:
         "last_error": raw.get("last_error"),
         "last_removed": raw.get("last_removed"),
         "status_file": str(STATUS_PATH),
+        "can_start": ui_status in ("ERROR", "STALE", "STOPPED"),
+    }
+
+
+def start_mesh_watcher() -> dict[str, Any]:
+    """Enable + Start the Task Scheduler job (same as Mesh Watcher.exe)."""
+    task = _task_info()
+    if not task.get("installed"):
+        return {
+            "ok": False,
+            "error": f"Task not installed. Run {INSTALL_HINT}",
+            "status": get_watcher_status(),
+        }
+
+    current = get_watcher_status()
+    if current.get("status") == "RUNNING":
+        return {
+            "ok": True,
+            "message": "Watcher already running",
+            "already": True,
+            "status": current,
+        }
+
+    try:
+        out = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"""
+$ErrorActionPreference = 'Stop'
+$t = Get-ScheduledTask -TaskName '{TASK_NAME}' -EA Stop
+if (-not $t.Settings.Enabled) {{
+  Enable-ScheduledTask -TaskName '{TASK_NAME}' | Out-Null
+}}
+$t = Get-ScheduledTask -TaskName '{TASK_NAME}'
+if ([string]$t.State -eq 'Running') {{
+  Write-Output 'ALREADY_RUNNING'
+  exit 0
+}}
+Start-ScheduledTask -TaskName '{TASK_NAME}'
+Write-Output 'STARTED'
+""",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15.0,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "status": get_watcher_status()}
+
+    line = (out.stdout or "").strip().splitlines()
+    line = line[-1] if line else ""
+    err = (out.stderr or "").strip()
+    if out.returncode != 0:
+        return {
+            "ok": False,
+            "error": err or line or f"Start-ScheduledTask failed (code {out.returncode})",
+            "status": get_watcher_status(),
+        }
+
+    # Initial mesh fix + first heartbeat can take ~15–25s
+    status = get_watcher_status()
+    for _ in range(12):
+        if status.get("status") == "RUNNING":
+            return {
+                "ok": True,
+                "message": "Watcher started",
+                "already": line.startswith("ALREADY_RUNNING"),
+                "status": status,
+            }
+        if _live_watcher_pids() or str(status.get("task_state") or "").lower() == "running":
+            # Process up; wait for heartbeat JSON
+            time.sleep(2.0)
+            status = get_watcher_status()
+            continue
+        time.sleep(2.0)
+        status = get_watcher_status()
+
+    if status.get("status") == "RUNNING":
+        return {"ok": True, "message": "Watcher started", "status": status}
+    if _live_watcher_pids():
+        return {
+            "ok": True,
+            "message": "Watcher process started (heartbeat pending)",
+            "status": status,
+        }
+    return {
+        "ok": False,
+        "error": (
+            f"Task start requested but watcher still {status.get('status')}. "
+            f"Check Task Scheduler / logs/mesh_route_watcher.log"
+        ),
+        "status": status,
     }
