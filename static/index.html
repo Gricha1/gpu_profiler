@@ -615,6 +615,28 @@
       color: var(--muted);
     }
     .row-label span:last-child { color: #c9d4e3; }
+    
+    .home-user-select {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0.2rem 0.4rem;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+      cursor: pointer;
+      max-width: 280px;
+    }
+    .home-user-select:hover {
+      border-color: var(--line-strong);
+    }
+    .home-user-select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .home-details {
+      margin-top: 0.3rem;
+    }
 
     .track {
       height: 8px;
@@ -1267,6 +1289,24 @@
       return `<div class="track"><div class="fill ${kind}" style="width:${Math.min(pct, 100)}%"></div></div>`;
     }
 
+    function updateHomeDisplay(selectEl) {
+      const host = selectEl.dataset.host;
+      const username = selectEl.value;
+      const detailsDiv = document.getElementById(`home-details-${host}`);
+      if (!detailsDiv) return;
+      
+      // Find the server data
+      const servers = (window._lastMetricsData && window._lastMetricsData.servers) || [];
+      const server = servers.find(s => s.host === host);
+      if (!server || !server.all_homes) return;
+      
+      const selected = server.all_homes.find(h => h.username === username);
+      if (!selected) return;
+      
+      const homePct = selected.disk_pct != null ? selected.disk_pct : 0;
+      detailsDiv.innerHTML = `<div class="row-label"><span title="${escapeHtml(selected.path || "")}">${fmtGiB(selected.used_bytes)}${selected.disk_pct != null ? ` · ${selected.disk_pct}% диска` : ""}</span></div>${bar(Math.min(homePct, 100), "home")}`;
+    }
+
     function escapeHtml(s) {
       return String(s)
         .replaceAll("&", "&amp;")
@@ -1459,7 +1499,24 @@
             body += `<div class="empty">DISK: нет данных</div>`;
           }
 
-          if (s.home_disk) {
+          if (s.all_homes && s.all_homes.length) {
+            body += `
+              <div class="ram">
+                <div class="row-label">
+                  <span>HOME USAGE</span>
+                  <select class="home-user-select" data-host="${escapeHtml(s.host)}" onchange="updateHomeDisplay(this)">
+                    ${s.all_homes.map(h => `<option value="${escapeHtml(h.username)}">${escapeHtml(h.username)} — ${fmtGiB(h.used_bytes)}${h.disk_pct != null ? ` · ${h.disk_pct}%` : ""}</option>`).join("")}
+                  </select>
+                </div>
+                <div class="home-details" id="home-details-${escapeHtml(s.host)}">
+                  ${(() => {
+                    const selected = s.all_homes[0];
+                    const homePct = selected.disk_pct != null ? selected.disk_pct : 0;
+                    return `<div class="row-label"><span title="${escapeHtml(selected.path || "")}">${fmtGiB(selected.used_bytes)}${selected.disk_pct != null ? ` · ${selected.disk_pct}% диска` : ""}</span></div>${bar(Math.min(homePct, 100), "home")}`;
+                  })()}
+                </div>
+              </div>`;
+          } else if (s.home_disk) {
             const homePct = s.home_disk.disk_pct != null ? s.home_disk.disk_pct : 0;
             const homeLabel = s.home_disk.disk_pct != null
               ? `${fmtGiB(s.home_disk.used_bytes)} · ${s.home_disk.disk_pct}% диска`
@@ -1470,7 +1527,7 @@
                 ${bar(Math.min(homePct, 100), "home")}
               </div>`;
           } else {
-            body += `<div class="empty">MY HOME: нет данных</div>`;
+            body += `<div class="empty">HOME: нет данных</div>`;
           }
         }
 
@@ -2145,6 +2202,7 @@
       try {
         const res = await fetch("/api/metrics", { cache: "no-store" });
         const data = await res.json();
+        window._lastMetricsData = data;
         const ts = new Date((data.updated_at || 0) * 1000);
         updatedEl.textContent = ts.toLocaleTimeString();
         // Interval stays 5s. If project dropdown/modal is open, only refresh

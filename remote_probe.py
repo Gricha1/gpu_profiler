@@ -99,6 +99,42 @@ def main() -> None:
             continue
     print(home_line if home_line else f"0\t{home}")
 
+    print("---ALL_HOMES---")
+    # Collect disk usage for all users in /home
+    home_dir = "/home"
+    if os.path.isdir(home_dir):
+        try:
+            users = [d for d in os.listdir(home_dir) if os.path.isdir(os.path.join(home_dir, d))]
+            for user in sorted(users):
+                user_path = os.path.join(home_dir, user)
+                user_line = ""
+                for cmd in (
+                    ["timeout", "10", "du", "-sb", user_path],
+                    ["du", "-sb", user_path],
+                ):
+                    try:
+                        proc = subprocess.run(
+                            cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL,
+                            universal_newlines=True,
+                            timeout=12,
+                            check=False,
+                        )
+                        line = (proc.stdout or "").strip().splitlines()
+                        if line:
+                            user_line = line[-1].strip()
+                            if user_line and user_line[0].isdigit():
+                                break
+                    except (FileNotFoundError, subprocess.TimeoutExpired):
+                        continue
+                if user_line:
+                    print(f"{user}\t{user_line}")
+                else:
+                    print(f"{user}\t0\t{user_path}")
+        except OSError:
+            pass
+
 
 if __name__ == "__main__":
     main()

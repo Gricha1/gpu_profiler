@@ -1351,6 +1351,7 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
     disks: list[dict[str, Any]] = []
     disks_by_mount: dict[str, dict[str, Any]] = {}
     home_disk = None
+    all_homes: list[dict[str, Any]] = []
     section = "gpu"
 
     for raw in stdout.splitlines():
@@ -1371,6 +1372,9 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
             continue
         if line == "---HOME---":
             section = "home"
+            continue
+        if line == "---ALL_HOMES---":
+            section = "all_homes"
             continue
 
         if section == "gpu":
@@ -1482,6 +1486,22 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
                 "used_bytes": used_b,
                 "path": path,
             }
+        elif section == "all_homes":
+            # Format: username\tSIZE\tPATH
+            parts = line.split("\t", 2)
+            if len(parts) < 2:
+                continue
+            username = parts[0].strip()
+            try:
+                used_b = int(parts[1].strip().split()[0])
+            except ValueError:
+                continue
+            path = parts[2].strip() if len(parts) > 2 else ""
+            all_homes.append({
+                "username": username,
+                "used_bytes": used_b,
+                "path": path,
+            })
 
     if not disk and disks:
         disk = disks[0]
@@ -1490,6 +1510,14 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
             100.0 * home_disk["used_bytes"] / disk["total_bytes"], 2
         )
         home_disk["mount"] = disk.get("mount")
+    
+    # Calculate disk_pct for all homes
+    if disk and disk.get("total_bytes"):
+        for h in all_homes:
+            h["disk_pct"] = round(
+                100.0 * h["used_bytes"] / disk["total_bytes"], 2
+            )
+        all_homes.sort(key=lambda h: -h["used_bytes"])
 
     gpus: list[dict[str, Any]] = []
     for g in gpus_raw:
@@ -1521,6 +1549,7 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
         "disk": disk,
         "disks": disks,
         "home_disk": home_disk,
+        "all_homes": all_homes,
         "gpu_count": len(gpus),
     }
 
