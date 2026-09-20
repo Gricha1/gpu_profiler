@@ -97,6 +97,7 @@
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       grid-template-areas:
         "quotas user"
+        "quotas debug"
         "quotas meta"
         "quotas sheet";
       align-items: start;
@@ -108,12 +109,14 @@
     .header-actions > .meta       { grid-area: meta; justify-self: end; }
     .header-actions > .sheet-btn { grid-area: sheet; justify-self: end; }
     .header-actions > .user-switch-btn { grid-area: user; justify-self: end; }
+    .header-actions > .debug-ui-btn { grid-area: debug; justify-self: end; }
     @media (max-width: 980px) {
       .header-actions {
         grid-template-columns: 1fr;
         grid-template-areas:
           "quotas"
           "user"
+          "debug"
           "meta"
           "sheet";
         max-width: 100%;
@@ -121,6 +124,7 @@
       .header-actions > .meta { justify-self: start; text-align: left; }
       .header-actions > .sheet-btn { justify-self: start; }
       .header-actions > .user-switch-btn { justify-self: start; }
+      .header-actions > .debug-ui-btn { justify-self: start; }
     }
     .sheet-btn {
       display: inline-flex;
@@ -1401,6 +1405,7 @@
     </div>
     <div class="header-actions">
       <button type="button" class="user-switch-btn" id="userSwitchBtn">Пользователь: —</button>
+      <a class="user-switch-btn debug-ui-btn" id="debugUiBtn" href="#" target="_blank" rel="noopener" hidden>Developer UI</a>
       <section class="quotas-card" id="quotasCard" aria-label="AI Coding Quotas" hidden>
         <div class="quotas-head">
           <div>

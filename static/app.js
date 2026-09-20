@@ -39,6 +39,7 @@
     const userModal = document.getElementById("userModal");
     const userModalTitle = document.getElementById("userModalTitle");
     const userSwitchBtn = document.getElementById("userSwitchBtn");
+    const debugUiBtn = document.getElementById("debugUiBtn");
     const userNameInput = document.getElementById("userNameInput");
     const userNameField = document.getElementById("userNameField");
     const adminPasswordField = document.getElementById("adminPasswordField");
@@ -47,6 +48,15 @@
     const userLoginBack = document.getElementById("userLoginBack");
     const userLoginError = document.getElementById("userLoginError");
     let currentUser = null;
+
+    function updateDebugUiButton() {
+      const isAdmin = Boolean(currentUser?.is_admin);
+      debugUiBtn.hidden = !isAdmin;
+      if (isAdmin) {
+        const port = location.port === "8765" ? "8766" : "8001";
+        debugUiBtn.href = `${location.protocol}//${location.hostname}:${port}/`;
+      }
+    }
     let firstPaint = true;
     let projectsByHost = {};
     const selectedByHost = {};
@@ -1930,6 +1940,7 @@
       const res = await fetch("/api/session", { cache: "no-store" });
       if (res.status === 404) {
         currentUser = { username: "legacy", is_admin: false };
+        updateDebugUiButton();
         userSwitchBtn.textContent = "Пользователи: нужен перезапуск";
         await tick();
         return;
@@ -1937,6 +1948,7 @@
       const data = await res.json();
       if (!data.user) return openUserModal(true);
       currentUser = data.user;
+      updateDebugUiButton();
       userSwitchBtn.textContent = `Пользователь: ${currentUser.username}`;
       locallyAddedHosts.clear();
       locallyDeletedHosts.clear();
@@ -1969,6 +1981,7 @@
         if (res.status === 404) throw new Error("Перезапустите backend для включения пользователей");
         if (!res.ok) throw new Error(data.detail || "Ошибка входа");
         currentUser = data.user;
+        updateDebugUiButton();
         userSwitchBtn.textContent = `Пользователь: ${currentUser.username}`;
         userModal.dataset.required = "0";
         closeUserModal();
