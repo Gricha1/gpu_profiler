@@ -168,6 +168,7 @@ async def test_remote_admin_token_is_accepted(monkeypatch):
 
 def test_frontend_serializes_polling_and_guards_mutations():
     source = (Path(app.__file__).parent / "static" / "app.js").read_text(encoding="utf-8")
+    html = (Path(app.__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
     assert "if (_tickRunning) return" in source
     assert "mutationVersion !== _serverMutationVersion" in source
     assert "ctrl.abort()" in source
@@ -184,6 +185,7 @@ def test_frontend_serializes_polling_and_guards_mutations():
     assert "persistLastHostErrors()" in source
     assert "showAdminPasswordStep" in source
     assert "userLoginBack" in source
+    assert ".user-login-fields [hidden] { display: none !important; }" in html
 
 
 def test_ssh_diagnostics_contains_required_counters():

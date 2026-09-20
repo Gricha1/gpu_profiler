@@ -233,7 +233,7 @@ GET /api/diagnostics/ssh
 
 ## 5. Frontend и непрерывное отображение карточек
 
-Frontend подключается как `static/app.js?v=21`.
+Frontend подключается как `static/app.js?v=22`.
 
 Исправлены три независимые гонки:
 

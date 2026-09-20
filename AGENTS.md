@@ -326,7 +326,7 @@ moved to an external coordinator.
 
 ### 5.5 Frontend update invariants
 
-- `static/app.js?v=21` permits only one in-flight metrics request and rejects
+- `static/app.js?v=22` permits only one in-flight metrics request and rejects
   responses that predate an ADD/DELETE mutation.
 - Known metrics are retained when an older backend returns a loading/error
   placeholder; the card becomes stale rather than empty.
