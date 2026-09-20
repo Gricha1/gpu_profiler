@@ -2227,16 +2227,6 @@
         });
     });
 
-    // User tracking
-    (function initTracking() {
-      let username = localStorage.getItem("gpu_monitor_username");
-      if (!username) {
-        username = "user_" + Math.random().toString(36).substring(2, 10);
-        localStorage.setItem("gpu_monitor_username", username);
-      }
-      fetch("/api/track/visit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username })
-      }).catch(() => {});
-    })();
+    window.addEventListener("pagehide", () => {
+      navigator.sendBeacon("/api/session/leave");
+    });

@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="${HOME}/gpu_profiler"
 IMAGE="gpu-profiler:local"
 CONTAINER="gpu-profiler"
+DEBUG_CONTAINER="gpu-profiler-debug"
 
 cd "${ROOT}"
 mkdir -p data logs runtime
@@ -15,6 +16,9 @@ docker build \
 
 if docker container inspect "${CONTAINER}" >/dev/null 2>&1; then
   docker container rm --force "${CONTAINER}"
+fi
+if docker container inspect "${DEBUG_CONTAINER}" >/dev/null 2>&1; then
+  docker container rm --force "${DEBUG_CONTAINER}"
 fi
 
 env_args=()
@@ -33,9 +37,21 @@ docker run --detach \
   --volume "${HOME}/.ssh:/home/app/.ssh:ro" \
   "${IMAGE}"
 
+docker run --detach \
+  --name "${DEBUG_CONTAINER}" \
+  --restart unless-stopped \
+  --network host \
+  --health-cmd "curl --fail --silent http://127.0.0.1:8001/ >/dev/null || exit 1" \
+  "${env_args[@]}" \
+  --volume "${ROOT}/data:/app/data" \
+  "${IMAGE}" \
+  python -m uvicorn debug_app:app --host 0.0.0.0 --port 8001 --workers 1
+
 for _ in {1..30}; do
-  if curl --fail --silent --max-time 3 http://127.0.0.1:8000/ >/dev/null; then
-    echo "GPU Profiler is ready at http://$(hostname -I | awk '{print $1}'):8000/"
+  if curl --fail --silent --max-time 3 http://127.0.0.1:8000/ >/dev/null \
+    && curl --fail --silent --max-time 3 http://127.0.0.1:8001/ >/dev/null; then
+    echo "GPU Profiler: http://$(hostname -I | awk '{print $1}'):8000/"
+    echo "Analytics: http://$(hostname -I | awk '{print $1}'):8001/"
     exit 0
   fi
   sleep 1

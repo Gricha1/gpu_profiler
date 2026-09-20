@@ -365,18 +365,30 @@ async def api_select_user(body: _LoginBody, request: Request) -> dict[str, Any]:
         user_config.bind_user, _client_ip(request), "admin" if is_admin else username,
         is_admin=is_admin,
     )
+    await asyncio.to_thread(user_tracking.touch, user["username"], _client_ip(request), force_new=True)
     return {"ok": True, "user": user}
 
 
 @app.middleware("http")
 async def _no_cache_html(request, call_next):
     response = await call_next(request)
+    user = await asyncio.to_thread(user_config.user_for_ip, _client_ip(request))
+    if user:
+        await asyncio.to_thread(user_tracking.touch, user["username"], _client_ip(request))
     path = request.url.path
     if path == "/" or path.endswith(".html"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     return response
+
+
+@app.post("/api/session/leave")
+async def api_session_leave(request: Request) -> dict[str, bool]:
+    user = await asyncio.to_thread(user_config.user_for_ip, _client_ip(request))
+    if user:
+        await asyncio.to_thread(user_tracking.leave, user["username"], _client_ip(request))
+    return {"ok": True}
 
 
 @app.get("/")
