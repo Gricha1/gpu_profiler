@@ -646,6 +646,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop.ps1
 Добавлены `Dockerfile`, `compose.yaml` и
 `scripts/ubuntu/docker-deploy.sh`. Контейнер запускается с host networking для
 доступа к NetBird/ZeroTier/OpenVPN маршрутам. `data/`, `logs/`, `runtime/`,
-изменяемые JSON-конфигурации и `~/.ssh` подключаются с хоста; SSH mount работает
-только на чтение. Старые Ubuntu `.venv` install/update scripts и systemd unit
+`~/.ssh` подключаются с хоста; SSH mount работает только на чтение. Канонический
+список серверов сохраняется в SQLite, а runtime `host_paths.json` восстанавливается
+из него на startup. Старые Ubuntu `.venv` install/update scripts и systemd unit
 удалены, чтобы в репозитории оставался один production pipeline.

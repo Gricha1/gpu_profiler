@@ -30,9 +30,6 @@ docker run --detach \
   --volume "${ROOT}/data:/app/data" \
   --volume "${ROOT}/logs:/app/logs" \
   --volume "${ROOT}/runtime:/app/runtime" \
-  --volume "${ROOT}/host_paths.json:/app/host_paths.json" \
-  --volume "${ROOT}/projects.json:/app/projects.json" \
-  --volume "${ROOT}/protected_nets.json:/app/protected_nets.json" \
   --volume "${HOME}/.ssh:/home/app/.ssh:ro" \
   "${IMAGE}"
 

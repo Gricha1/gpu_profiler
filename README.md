@@ -37,8 +37,8 @@ bash scripts/ubuntu/docker-deploy.sh
 ```
 
 Скрипт собирает новый образ, заменяет только контейнер и проверяет HTTP.
-Каталоги `data/`, `logs/`, `runtime/`, `.env`, SSH keys и изменяемые JSON-файлы
-остаются на хосте.
+Каталоги `data/`, `logs/`, `runtime/`, `.env` и SSH keys остаются на хосте.
+Список серверов хранится в SQLite и при старте восстанавливает runtime JSON.
 
 Если установлен Docker Compose plugin, эквивалентный ручной запуск:
 
@@ -59,7 +59,7 @@ curl -I http://127.0.0.1:8000/
 ## Подключённые данные
 
 - `./data:/app/data` — пользователи, IP bindings, история и last-good cache.
-- `host_paths.json`, `projects.json`, `protected_nets.json` — конфигурация.
+- `host_paths.json`, `projects.json`, `protected_nets.json` — versioned defaults внутри образа.
 - `~/.ssh:/home/app/.ssh:ro` — SSH aliases и ключи, только чтение.
 - `network_mode: host` — доступ к overlay/VPN-маршрутам Ubuntu-хоста.
 

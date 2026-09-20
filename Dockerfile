@@ -17,7 +17,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN python -m pip install --upgrade pip && pip install -r requirements.txt
 COPY --chown=app:app . .
-RUN mkdir -p data logs runtime && chown -R app:app data logs runtime
+RUN mkdir -p data logs runtime && chown -R app:app /app
 
 USER app
 EXPOSE 8000
