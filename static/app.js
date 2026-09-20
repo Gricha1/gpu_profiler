@@ -1904,6 +1904,12 @@
 
     async function loadSession() {
       const res = await fetch("/api/session", { cache: "no-store" });
+      if (res.status === 404) {
+        currentUser = { username: "legacy", is_admin: false };
+        userSwitchBtn.textContent = "Пользователи: нужен перезапуск";
+        await tick();
+        return;
+      }
       const data = await res.json();
       if (!data.user) return openUserModal(true);
       currentUser = data.user;
@@ -1931,6 +1937,7 @@
           body: JSON.stringify({ username, password: adminPasswordInput.value }),
         });
         const data = await res.json();
+        if (res.status === 404) throw new Error("Перезапустите backend для включения пользователей");
         if (!res.ok) throw new Error(data.detail || "Ошибка входа");
         currentUser = data.user;
         userSwitchBtn.textContent = `Пользователь: ${currentUser.username}`;
