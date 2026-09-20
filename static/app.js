@@ -37,11 +37,14 @@
     const ztBox = document.getElementById("ztBox");
     const ztRow = document.getElementById("ztRow");
     const userModal = document.getElementById("userModal");
+    const userModalTitle = document.getElementById("userModalTitle");
     const userSwitchBtn = document.getElementById("userSwitchBtn");
     const userNameInput = document.getElementById("userNameInput");
+    const userNameField = document.getElementById("userNameField");
     const adminPasswordField = document.getElementById("adminPasswordField");
     const adminPasswordInput = document.getElementById("adminPasswordInput");
     const userLoginSubmit = document.getElementById("userLoginSubmit");
+    const userLoginBack = document.getElementById("userLoginBack");
     const userLoginError = document.getElementById("userLoginError");
     let currentUser = null;
     let firstPaint = true;
@@ -1892,8 +1895,28 @@
       userLoginError.textContent = "";
       userNameInput.value = required ? "" : (currentUser?.username || "");
       adminPasswordInput.value = "";
-      adminPasswordField.hidden = userNameInput.value.trim().toLowerCase() !== "admin";
+      showUsernameStep();
       setTimeout(() => userNameInput.focus(), 0);
+    }
+
+    function showUsernameStep() {
+      userModalTitle.textContent = "Выбор пользователя";
+      userNameField.hidden = false;
+      adminPasswordField.hidden = true;
+      userLoginBack.hidden = true;
+      userLoginSubmit.textContent = "Продолжить";
+      userLoginError.textContent = "";
+    }
+
+    function showAdminPasswordStep() {
+      userModalTitle.textContent = "Пароль администратора";
+      userNameField.hidden = true;
+      adminPasswordField.hidden = false;
+      userLoginBack.hidden = false;
+      userLoginSubmit.textContent = "Войти";
+      userLoginError.textContent = "";
+      adminPasswordInput.value = "";
+      setTimeout(() => adminPasswordInput.focus(), 0);
     }
 
     function closeUserModal() {
@@ -1921,14 +1944,19 @@
       await tick();
     }
 
-    userNameInput.addEventListener("input", () => {
-      adminPasswordField.hidden = userNameInput.value.trim().toLowerCase() !== "admin";
+    userLoginBack.addEventListener("click", () => {
+      showUsernameStep();
+      setTimeout(() => userNameInput.focus(), 0);
     });
     userSwitchBtn.addEventListener("click", () => openUserModal(false));
     userModal.addEventListener("click", e => { if (e.target === userModal) closeUserModal(); });
     userLoginSubmit.addEventListener("click", async () => {
       const username = userNameInput.value.trim();
       if (!username) return;
+      if (adminPasswordField.hidden && username.toLowerCase() === "admin") {
+        showAdminPasswordStep();
+        return;
+      }
       userLoginSubmit.disabled = true;
       userLoginError.textContent = "";
       try {

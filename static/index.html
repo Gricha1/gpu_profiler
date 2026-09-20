@@ -1443,17 +1443,20 @@
 
   <div class="modal-backdrop" id="userModal" aria-hidden="true">
     <div class="modal user-login-modal" role="dialog" aria-modal="true">
-      <div class="modal-head"><h2>Выбор пользователя</h2></div>
+      <div class="modal-head"><h2 id="userModalTitle">Выбор пользователя</h2></div>
       <div class="user-login-fields">
-        <label>Имя пользователя
+        <label id="userNameField">Имя пользователя
           <input id="userNameInput" type="text" maxlength="64" autocomplete="username" autofocus />
         </label>
         <label id="adminPasswordField" hidden>Пароль администратора
-          <input id="adminPasswordInput" type="password" autocomplete="current-password" />
+          <input id="adminPasswordInput" type="password" inputmode="numeric" autocomplete="current-password" />
         </label>
         <div id="userLoginError" style="color:var(--bad);font-size:.78rem;"></div>
       </div>
-      <div class="modal-foot"><button type="button" id="userLoginSubmit">Войти</button></div>
+      <div class="modal-foot" style="justify-content:space-between;">
+        <button type="button" id="userLoginBack" hidden style="background:transparent;border-color:var(--line-strong);color:var(--muted);">Назад</button>
+        <button type="button" id="userLoginSubmit">Продолжить</button>
+      </div>
     </div>
   </div>
 
@@ -1561,6 +1564,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20"></script>
+  <script src="/static/app.js?v=21"></script>
 </body>
 </html>

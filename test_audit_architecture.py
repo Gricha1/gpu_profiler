@@ -182,6 +182,8 @@ def test_frontend_serializes_polling_and_guards_mutations():
     assert "LAST_HOST_ERRORS_KEY" in source
     assert "isLoadingPlaceholder(next) && previousConcreteError" in source
     assert "persistLastHostErrors()" in source
+    assert "showAdminPasswordStep" in source
+    assert "userLoginBack" in source
 
 
 def test_ssh_diagnostics_contains_required_counters():
