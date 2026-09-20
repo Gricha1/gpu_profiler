@@ -2,82 +2,78 @@
 
 FastAPI-панель мониторинга GPU/RAM серверов через SSH.
 
-## Как запускается на Ubuntu
+## Ubuntu: канонический запуск через Docker
 
-Канонический production-вариант: Python virtual environment + systemd user
-service. Сам GPU Profiler **не запускается в Docker**. Docker использовался на
-`fic_comp` только для отдельного NetBird-клиента.
+Контейнер использует сеть хоста, поэтому видит те же маршруты NetBird,
+ZeroTier и OpenVPN. Данные пользователей, конфигурация и SSH-ключи не входят в
+образ и подключаются с хоста.
 
-Требования: Ubuntu 22.04/24.04, Python 3.10+, `git`, `openssh-client`,
-`python3-venv` и настроенные SSH aliases/keys.
+Требования: Ubuntu 22.04/24.04, Git, Docker Engine и настроенный `~/.ssh`.
+Пользователь должен иметь доступ к Docker (`docker` group).
 
 ### Первая установка
 
-Репозиторий должен находиться в `~/gpu_profiler`, поскольку этот путь использует
-service unit:
-
 ```bash
-sudo apt update
-sudo apt install -y curl git openssh-client python3 python3-venv
 git clone <REPOSITORY_URL> ~/gpu_profiler
 cd ~/gpu_profiler
-bash scripts/ubuntu/install.sh
+cp .env.example .env
+# При необходимости измените пароль администратора и остальные параметры в .env
+bash scripts/ubuntu/docker-deploy.sh
 ```
 
-Проверка и адрес:
-
-```bash
-systemctl --user status gpu-profiler.service
-curl -I http://127.0.0.1:8000/
-```
+Открыть:
 
 ```text
 http://<IP_UBUNTU>:8000/
-```
-
-Чтобы сервис запускался после reboot до интерактивного входа:
-
-```bash
-sudo loginctl enable-linger "$USER"
 ```
 
 ### Обновление
 
 ```bash
 cd ~/gpu_profiler
-bash scripts/ubuntu/update.sh
+git fetch origin main
+git merge --ff-only origin/main
+bash scripts/ubuntu/docker-deploy.sh
 ```
 
-Скрипт принимает только fast-forward `main`, обновляет зависимости, запускает
-тесты, перезапускает сервис и проверяет HTTP endpoint.
+Скрипт собирает новый образ, заменяет только контейнер и проверяет HTTP.
+Каталоги `data/`, `logs/`, `runtime/`, `.env`, SSH keys и изменяемые JSON-файлы
+остаются на хосте.
 
-### Управление и логи
+Если установлен Docker Compose plugin, эквивалентный ручной запуск:
 
 ```bash
-systemctl --user restart gpu-profiler.service
-systemctl --user stop gpu-profiler.service
-journalctl --user -u gpu-profiler.service -f
+docker compose up -d --build
 ```
 
-## Конфигурация
+### Управление и диагностика
 
-- `.env` — локальные секреты и параметры; шаблон `.env.example`.
-- `host_paths.json` — runtime-зеркало SSH-конфигураций.
-- `data/users.sqlite3` — пользователи, IP bindings и видимость серверов.
-- `~/.ssh/config` и SSH keys всегда находятся вне репозитория.
+```bash
+docker ps --filter name=gpu-profiler
+docker logs -f gpu-profiler
+docker restart gpu-profiler
+docker stop gpu-profiler
+curl -I http://127.0.0.1:8000/
+```
 
-`data/`, `.env`, логи и ключи исключены из Git.
+## Подключённые данные
+
+- `./data:/app/data` — пользователи, IP bindings, история и last-good cache.
+- `host_paths.json`, `projects.json`, `protected_nets.json` — конфигурация.
+- `~/.ssh:/home/app/.ssh:ro` — SSH aliases и ключи, только чтение.
+- `network_mode: host` — доступ к overlay/VPN-маршрутам Ubuntu-хоста.
+
+Секреты находятся только в `.env`; файл исключён из Git.
 
 ## Текущий deployment
 
 `fic_comp`: **http://192.168.194.193:8000/**
 
-Каталог: `/home/gregory/gpu_profiler`. Сервис:
-`~/.config/systemd/user/gpu-profiler.service`.
+Каталог: `/home/gregory/gpu_profiler`, контейнер: `gpu-profiler`.
 
 ## Windows
 
-Windows-вариант сохранён для локальных VPN/NetBird/ZeroTier/Amnezia функций:
+Windows-вариант сохранён для локальных Amnezia/NetBird/ZeroTier-инструментов:
 
 ```powershell
 pip install -r requirements.txt
@@ -95,5 +91,5 @@ python -m py_compile app.py user_config.py
 node --check static/app.js
 ```
 
-Полная архитектура и история исправлений: [servers_profiler.md](./servers_profiler.md).
-Инварианты для сопровождающих: [AGENTS.md](./AGENTS.md).
+Архитектура и история: [servers_profiler.md](./servers_profiler.md).
+Инварианты сопровождения: [AGENTS.md](./AGENTS.md).

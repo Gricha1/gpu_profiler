@@ -1,0 +1,10 @@
+.git
+.env
+.venv
+__pycache__
+*.py[cod]
+data
+logs
+runtime
+launchers/*.exe
+*.zip

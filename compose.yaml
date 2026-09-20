@@ -1,0 +1,22 @@
+services:
+  gpu-profiler:
+    build:
+      context: .
+      args:
+        APP_UID: "${APP_UID:-1000}"
+        APP_GID: "${APP_GID:-1000}"
+    image: gpu-profiler:local
+    container_name: gpu-profiler
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./runtime:/app/runtime
+      - ./host_paths.json:/app/host_paths.json
+      - ./projects.json:/app/projects.json
+      - ./protected_nets.json:/app/protected_nets.json
+      - ${HOME}/.ssh:/home/app/.ssh:ro

@@ -42,15 +42,16 @@ Ubuntu unit слушает `0.0.0.0:8000`, локальный Windows launcher �
 ```bash
 git clone <REPOSITORY_URL> ~/gpu_profiler
 cd ~/gpu_profiler
-bash scripts/ubuntu/install.sh
+bash scripts/ubuntu/docker-deploy.sh
 ```
 
-Приложение устанавливается в `.venv` и работает как
-`gpu-profiler.service` (`systemd --user`). Docker не используется. Обновление:
+Приложение работает в контейнере `gpu-profiler` с restart policy
+`unless-stopped` и host networking. Изменяемые данные и SSH-конфигурация
+подключаются с хоста. Обновление после fast-forward `main`:
 
 ```bash
 cd ~/gpu_profiler
-bash scripts/ubuntu/update.sh
+bash scripts/ubuntu/docker-deploy.sh
 ```
 
 Локальный запуск на Windows:
@@ -545,7 +546,7 @@ baseline до изменений не существовало, поэтому �
 - `test_audit_architecture.py`, `test_per_host_cache.py`,
   `test_user_config.py` — regression и integration tests.
 - `requirements.txt` — полный runtime dependency set, включая `cursor-sdk`.
-- `services/gpu-profiler-linux.service` — Linux user-service для deployment.
+- `Dockerfile`, `compose.yaml`, `scripts/ubuntu/docker-deploy.sh` — Ubuntu deployment.
 - `.env.example` — scheduler, backoff, SSH limit, admin token/password.
 - `AGENTS.md` — обязательные архитектурные и safety invariants.
 - `README.md` — канонический Ubuntu pipeline установки и обновления.
@@ -574,10 +575,9 @@ baseline до изменений не существовало, поэтому �
 ## 14. Развёртывание на `fic_comp` (20.09.2026)
 
 Хост: Ubuntu 24.04.4 LTS, SSH alias `fic_comp`, пользователь `gregory`.
-Приложение развёрнуто в `/home/gregory/gpu_profiler`, виртуальное окружение —
-`.venv`. User unit установлен как
-`~/.config/systemd/user/gpu-profiler.service`, включён и запущен на
-`0.0.0.0:8000`. Проверены:
+Приложение развёрнуто в `/home/gregory/gpu_profiler`. Изначальный deployment
+через `.venv` и systemd user unit впоследствии заменён Docker-контейнером;
+приложение по-прежнему слушает `0.0.0.0:8000`. Проверены:
 
 - systemd state `active`;
 - `GET /` — HTTP 200, title `GPU Fleet`;
@@ -606,10 +606,9 @@ policy на `nettouse.ru:443` либо новый подтверждённый s
 
 ## 15. Очистка репозитория и Ubuntu pipeline (20.09.2026)
 
-Канонический production-запуск на Ubuntu — Python `.venv` и пользовательский
-systemd unit. Docker приложению не требуется. Добавлены воспроизводимые
-`scripts/ubuntu/install.sh` и `scripts/ubuntu/update.sh`; unit больше не зависит
-от `docker.service`.
+На этом этапе каноническим production-запуском были Python `.venv` и
+пользовательский systemd unit. Этот вариант затем заменён Docker deployment,
+описанным ниже.
 
 Из Git удалены runtime-артефакты и воспроизводимые бинарники (`users.db`,
 скриншот, собранные launcher EXE), устаревшие compatibility wrappers и
@@ -639,3 +638,14 @@ Invoke-RestMethod http://127.0.0.1:8765/api/diagnostics/ssh
 # Stop only this backend
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop.ps1
 ```
+
+---
+
+## 17. Миграция Ubuntu deployment на Docker (20.09.2026)
+
+Добавлены `Dockerfile`, `compose.yaml` и
+`scripts/ubuntu/docker-deploy.sh`. Контейнер запускается с host networking для
+доступа к NetBird/ZeroTier/OpenVPN маршрутам. `data/`, `logs/`, `runtime/`,
+изменяемые JSON-конфигурации и `~/.ssh` подключаются с хоста; SSH mount работает
+только на чтение. Старые Ubuntu `.venv` install/update scripts и systemd unit
+удалены, чтобы в репозитории оставался один production pipeline.
