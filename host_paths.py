@@ -10,6 +10,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
+import ssh_runtime
+
 ROOT = Path(__file__).resolve().parent
 PATHS_FILE = ROOT / "host_paths.json"
 PROTECTED_FILE = ROOT / "protected_nets.json"
@@ -17,7 +19,7 @@ ZT_CLI = Path(r"C:\Program Files (x86)\ZeroTier\One\zerotier-cli.bat")
 PROTECT_SCRIPT = ROOT / "protect_routes.ps1"
 
 _path_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
-PATH_CACHE_SEC = 25.0
+PATH_CACHE_SEC = 300.0
 _paths_mtime: float = 0.0
 
 
@@ -108,13 +110,14 @@ def _ssh_ok(
         cmd.extend(extra_opts)
     cmd.extend([target, "echo", "OK"])
     try:
-        out = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec + 8,
-            check=False,
-        )
+        with ssh_runtime.slot(target, "route"):
+            out = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec + 8,
+                check=False,
+            )
         ms = round((time.perf_counter() - t0) * 1000, 1)
         text = ((out.stdout or "") + (out.stderr or "")).strip()
         ok = out.returncode == 0 and any(
@@ -125,6 +128,7 @@ def _ssh_ok(
             err = text.splitlines()[-1] if text else f"ssh exit {out.returncode}"
         return ok, ms if ok else None, err
     except subprocess.TimeoutExpired:
+        ssh_runtime.note_result(target, timeout=True)
         return False, None, "timeout"
     except Exception as exc:  # noqa: BLE001
         return False, None, str(exc)
@@ -288,7 +292,9 @@ def probe_host_paths(host: str, *, force: bool = False) -> list[dict[str, Any]]:
         if cached and now - cached[0] < PATH_CACHE_SEC:
             return cached[1]
     results: list[dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=min(8, len(paths))) as pool:
+    # The shared SSH runtime is the authoritative cap.  Keeping the executor
+    # equally small also prevents a queue of blocked worker threads.
+    with ThreadPoolExecutor(max_workers=min(ssh_runtime.MAX_ACTIVE, len(paths))) as pool:
         futs = {pool.submit(probe_path, p): p for p in paths}
         for fut in as_completed(futs):
             try:
@@ -313,6 +319,15 @@ def probe_host_paths(host: str, *, force: bool = False) -> list[dict[str, Any]]:
     results.sort(key=lambda r: order.get(str(r.get("id")), 999))
     _path_cache[host] = (now, results)
     return results
+
+
+def cached_host_paths(host: str) -> list[dict[str, Any]] | None:
+    """Return route diagnostics without starting SSH."""
+    _paths_file_fresh()
+    cached = _path_cache.get(host)
+    if not cached:
+        return None
+    return cached[1]
 
 
 def best_ssh_target(host: str, path_results: list[dict[str, Any]] | None = None) -> tuple[str, list[str]]:

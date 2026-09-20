@@ -4,18 +4,21 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hmac
 import json
 import os
 import re
 import socket
 import subprocess
 import threading
+import logging
 import time
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -33,6 +36,7 @@ import sdk_agent
 from host_paths import (
     apply_protected_routes,
     best_ssh_target,
+    cached_host_paths,
     load_host_paths,
     probe_host_paths,
     zerotier_networks,
@@ -44,17 +48,9 @@ from services.public_ip import get_public_ip_status
 from services.quotas import aggregator as quotas_aggregator
 import user_tracking
 import gpu_metrics_history
+import ssh_runtime
 
-HOSTS = [
-    "lab_comp",
-    "ml3",
-    "ml4",
-    "aicenteritl",
-    "aicenter1",
-    "aicenter2",
-    "aicenter3",
-    "h200",
-]
+HOSTS = list(load_host_paths().keys())
 
 SSH_TIMEOUT_SEC = 8
 SSH_JUMP_TIMEOUT_SEC = 14
@@ -62,6 +58,7 @@ REFRESH_CACHE_SEC = 4
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
+LAST_GOOD_DIR = ROOT / "data" / "metrics" / "last_good"
 VPN_DIR = Path.home() / ".ssh" / "timeweb-vpn"
 VPN_BYPASS_SCRIPT = VPN_DIR / "amnezia-bypass-routes.ps1"
 VPN_SERVICE = "AmneziaWGTunnel$pcawg"
@@ -125,23 +122,114 @@ def _load_dotenv(path: Path = ROOT / ".env") -> None:
 
 _load_dotenv()
 
+REMOTE_REFRESH_SEC = max(5.0, float(os.getenv("GPU_MONITOR_REFRESH_SEC", "15")))
+REMOTE_BACKOFF_MAX_SEC = max(
+    REMOTE_REFRESH_SEC, float(os.getenv("GPU_MONITOR_BACKOFF_MAX_SEC", "120"))
+)
+ssh_runtime.configure(int(os.getenv("GPU_MONITOR_SSH_MAX_ACTIVE", "3")))
+
 
 def _probe_script() -> bytes:
     return (ROOT / "remote_probe.py").read_bytes()
 
 
-_cache: dict[str, Any] = {"ts": 0.0, "servers": [], "local": None, "local_ts": 0.0}
+def _last_good_path(host: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", host)
+    return LAST_GOOD_DIR / f"{safe}.json"
+
+
+def _persist_last_good(host: str, state: dict[str, Any]) -> None:
+    """Atomically persist a successful snapshot for restart continuity."""
+    LAST_GOOD_DIR.mkdir(parents=True, exist_ok=True)
+    path = _last_good_path(host)
+    temporary = path.with_suffix(".json.tmp")
+    payload = {**state, "persisted_at": time.time()}
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def _load_last_good_cache() -> None:
+    """Restore last-known metrics without claiming the host is currently up."""
+    now = time.time()
+    for host in list(HOSTS):
+        path = _last_good_path(host)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict) or data.get("host") != host or not data.get("ok"):
+            continue
+        last_success = float(data.get("last_success_at") or data.get("persisted_at") or 0.0)
+        _host_cache[host] = {
+            **data,
+            "ok": True,
+            "connection_ok": False,
+            "reachable": False,
+            "polling": False,
+            "stale": True,
+            "error": "обновление после запуска…",
+            "last_success_at": last_success or None,
+            "last_attempt_at": now,
+        }
+        _cache["ts"] = max(float(_cache.get("ts") or 0.0), last_success)
+
+
+_cache: dict[str, Any] = {
+    "ts": 0.0, "local": None, "local_ts": 0.0, "gen": 0,
+    "zerotier": [], "zerotier_ts": 0.0,
+}
 _refreshing = False
 _local_refreshing = False
+_zerotier_refreshing = False
 LOCAL_REFRESH_SEC = 2.0
+_cache_gen = 0
+
+logger = logging.getLogger("gpu_monitor")
+
+# Per-host independentный кэш — каждый хост обновляется независимо
+_host_cache: dict[str, dict[str, Any]] = {}
+_probe_sem = asyncio.Semaphore(3)
+_host_generation: dict[str, int] = {host: 0 for host in HOSTS}
+_host_tasks: dict[str, asyncio.Task[Any]] = {}
+_host_next_due: dict[str, float] = {host: 0.0 for host in HOSTS}
+_host_failures: dict[str, int] = {}
+_background_tasks: set[asyncio.Task[Any]] = set()
+_scheduler_stop: asyncio.Event | None = None
+_config_lock: asyncio.Lock | None = None
+_lifecycle_started = False
 
 
 def _current_metrics() -> dict[str, Any]:
     """Return current cached metrics data."""
+    servers = [_host_cache[h] for h in HOSTS if h in _host_cache]
     return {
         "updated_at": _cache["ts"],
-        "servers": _with_local(_cache["servers"]),
+        "servers": _with_local(servers),
     }
+
+
+def _host_cache_paths(host: str) -> list[dict[str, Any]]:
+    path_cfg = load_host_paths()
+    return [
+        {
+            "id": p.get("id"),
+            "label": p.get("label"),
+            "kind": p.get("kind"),
+            "protected": bool(p.get("protected")),
+            "ok": False,
+            "ms": None,
+            "detail": "probing…",
+            "ssh_target": p.get("ssh_target"),
+            "ip": p.get("ip"),
+            "port": p.get("port"),
+            "via": p.get("via"),
+            "host_name": p.get("host"),
+        }
+        for p in (path_cfg.get(host) or [])
+    ]
 
 
 def _placeholder_servers() -> list[dict[str, Any]]:
@@ -195,7 +283,38 @@ def _with_local(servers: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
     return [local, *servers]
 
-app = FastAPI(title="GPU Monitor")
+@asynccontextmanager
+async def _lifespan(_application: FastAPI):
+    await _startup_probe_local()
+    try:
+        yield
+    finally:
+        await _shutdown_sdk()
+
+
+app = FastAPI(title="GPU Monitor", lifespan=_lifespan)
+
+
+def _track_task(coro: Any) -> asyncio.Task[Any]:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+async def require_admin(request: Request) -> None:
+    """Allow local administration, or require the configured bearer token."""
+    if request.client and request.client.host in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        return
+    token = os.getenv("GPU_MONITOR_ADMIN_TOKEN", "").strip()
+    supplied = request.headers.get("x-admin-token", "")
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        supplied = auth[7:].strip()
+    if token:
+        if supplied and hmac.compare_digest(supplied, token):
+            return
+    raise HTTPException(status_code=403, detail="administrator access required")
 
 
 @app.middleware("http")
@@ -404,10 +523,11 @@ def _ssh_probe_host(target: str, timeout: int = 5) -> tuple[bool, float | None]:
     """Return (ok, round_trip_ms) for a single ssh target spec."""
     t0 = time.perf_counter()
     try:
-        out = _run_ps(
-            f"ssh -o ConnectTimeout={timeout} -o BatchMode=yes {target} echo OK 2>&1",
-            timeout=timeout + 4,
-        )
+        with ssh_runtime.slot(target, "vpn"):
+            out = _run_ps(
+                f"ssh -o ConnectTimeout={timeout} -o BatchMode=yes {target} echo OK 2>&1",
+                timeout=timeout + 4,
+            )
         ms = round((time.perf_counter() - t0) * 1000, 0)
         return ("OK" in out, ms if "OK" in out else None)
     except Exception:
@@ -913,10 +1033,11 @@ def _awg_udp_probe() -> tuple[bool, str]:
 
 def _ssh_run(cmd: str, timeout: int = 25) -> str:
     safe = cmd.replace("'", "'\"'\"'")
-    return _run_ps(
-        f"ssh -o ConnectTimeout=6 -o BatchMode=yes timeweb-vps '{safe}' 2>&1",
-        timeout=timeout,
-    )
+    with ssh_runtime.slot("timeweb-vps", "vpn"):
+        return _run_ps(
+            f"ssh -o ConnectTimeout=6 -o BatchMode=yes timeweb-vps '{safe}' 2>&1",
+            timeout=timeout,
+        )
 
 
 def _vpn_preflight() -> dict[str, Any]:
@@ -1585,15 +1706,17 @@ def _ssh_run_metrics(
         "-",
     ]
     try:
-        out = subprocess.run(
-            cmd,
-            input=_probe_script(),
-            capture_output=True,
-            timeout=connect_timeout + 25,
-            check=False,
-        )
+        with ssh_runtime.slot(target, "metrics"):
+            out = subprocess.run(
+                cmd,
+                input=_probe_script(),
+                capture_output=True,
+                timeout=connect_timeout + 25,
+                check=False,
+            )
         return out.returncode, out.stdout or b"", out.stderr or b""
     except subprocess.TimeoutExpired as exc:
+        ssh_runtime.note_result(target, timeout=True)
         return -1, exc.stdout or b"", b"timeout"
     except Exception as exc:  # noqa: BLE001
         return -2, b"", str(exc).encode("utf-8", errors="replace")
@@ -1622,7 +1745,16 @@ async def _probe_host(host: str) -> dict[str, Any]:
         _ssh_run_metrics, target, extra_opts, connect_timeout
     )
 
-    paths = await asyncio.to_thread(probe_host_paths, host)
+    # Successful regular collection does not fan out over every alternate
+    # route.  Full route diagnostics are only run after a metrics failure;
+    # otherwise the latest diagnostic snapshot (if any) is reused.
+    if rc == 0 and (stdout_b or b"").strip():
+        paths = cached_host_paths(host) or _host_cache_paths(host)
+        for path in paths:
+            if path.get("ssh_target") == target or path.get("id") == (prefer or {}).get("id"):
+                path.update({"ok": True, "detail": "metrics route ok"})
+    else:
+        paths = await asyncio.to_thread(probe_host_paths, host)
     any_path_ok = any(bool(p.get("ok")) for p in paths if p.get("kind") != "anydesk")
 
     if (rc != 0 or not (stdout_b or b"").strip()) and any_path_ok:
@@ -1683,14 +1815,127 @@ async def _probe_host(host: str) -> dict[str, Any]:
     return result
 
 
-async def _collect() -> list[dict[str, Any]]:
-    sem = asyncio.Semaphore(3)
+def _apply_probe_result(host: str, generation: int, result: dict[str, Any]) -> bool:
+    """Commit one probe if the host identity still matches.
 
-    async def _one(h: str) -> dict[str, Any]:
-        async with sem:
-            return await _probe_host(h)
+    A generation, not merely the hostname, prevents DELETE→ADD from accepting
+    a late result belonging to the deleted incarnation.  Failed probes retain
+    the last successful payload and only replace connection-state fields.
+    """
+    if host not in HOSTS or _host_generation.get(host) != generation:
+        logger.info("skip stale result for host %s generation %s", host, generation)
+        return False
+    now = time.time()
+    previous = _host_cache.get(host) or {}
+    if result.get("ok"):
+        committed = {
+            **result,
+            "connection_ok": True,
+            "polling": False,
+            "stale": False,
+            "last_attempt_at": now,
+            "last_success_at": now,
+        }
+        _host_failures[host] = 0
+    else:
+        failures = _host_failures.get(host, 0) + 1
+        _host_failures[host] = failures
+        if previous.get("last_success_at") or previous.get("ok"):
+            committed = {
+                **previous,
+                "host": host,
+                "ok": True,
+                "connection_ok": False,
+                "reachable": bool(result.get("reachable")),
+                "polling": False,
+                "stale": True,
+                "error": result.get("error") or "SSH probe failed",
+                "last_attempt_at": now,
+                "latency_ms": result.get("latency_ms"),
+                "paths": result.get("paths") or previous.get("paths") or [],
+            }
+        else:
+            committed = {
+                **result,
+                "connection_ok": False,
+                "polling": False,
+                "stale": False,
+                "last_attempt_at": now,
+                "last_success_at": None,
+            }
+    _host_cache[host] = committed
+    _cache["ts"] = now
+    return True
 
-    return list(await asyncio.gather(*[_one(h) for h in HOSTS]))
+
+async def _run_host_probe(host: str, generation: int | None = None) -> None:
+    generation = _host_generation.get(host, 0) if generation is None else generation
+    current = _host_cache.get(host)
+    if current is not None and _host_generation.get(host) == generation:
+        current["polling"] = True
+        current["last_attempt_at"] = time.time()
+    try:
+        async with _probe_sem:
+            result = await _probe_host(host)
+        committed = _apply_probe_result(host, generation, result)
+        if committed:
+            if result.get("ok"):
+                await asyncio.to_thread(_persist_last_good, host, _host_cache[host])
+            failures = _host_failures.get(host, 0)
+            delay = REMOTE_REFRESH_SEC if not failures else min(
+                REMOTE_BACKOFF_MAX_SEC, REMOTE_REFRESH_SEC * (2 ** min(failures, 3))
+            )
+            _host_next_due[host] = time.monotonic() + delay
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("probe failed for host %s", host)
+        _apply_probe_result(host, generation, {"host": host, "ok": False, "error": str(exc)})
+        _host_next_due[host] = time.monotonic() + REMOTE_REFRESH_SEC
+
+
+def _launch_host_probe(host: str, *, immediate: bool = False) -> asyncio.Task[Any] | None:
+    task = _host_tasks.get(host)
+    if task and not task.done():
+        return task
+    if host not in HOSTS:
+        return None
+    if not immediate and time.monotonic() < _host_next_due.get(host, 0.0):
+        return None
+    generation = _host_generation.setdefault(host, 0)
+    task = _track_task(_run_host_probe(host, generation))
+    _host_tasks[host] = task
+    task.add_done_callback(lambda done, h=host: _host_tasks.pop(h, None) if _host_tasks.get(h) is done else None)
+    return task
+
+
+async def _metrics_scheduler() -> None:
+    """Single controlled scheduler; HTTP handlers never launch SSH sweeps."""
+    assert _scheduler_stop is not None
+    while not _scheduler_stop.is_set():
+        now_wall = time.time()
+        if now_wall - float(_cache.get("local_ts") or 0.0) >= LOCAL_REFRESH_SEC and not _local_refreshing:
+            _track_task(_refresh_local())
+        if now_wall - float(_cache.get("zerotier_ts") or 0.0) >= 30.0 and not _zerotier_refreshing:
+            _track_task(_refresh_zerotier())
+        for host in list(HOSTS):
+            _launch_host_probe(host)
+        try:
+            await asyncio.wait_for(_scheduler_stop.wait(), timeout=0.5)
+        except asyncio.TimeoutError:
+            pass
+
+
+async def _collect_incremental() -> None:
+    """Probe all hosts and update _host_cache incrementally as each completes."""
+
+    async def _one(host: str) -> None:
+        generation = _host_generation.setdefault(host, 0)
+        async with _probe_sem:
+            result = await _probe_host(host)
+        _apply_probe_result(host, generation, result)
+
+    await asyncio.gather(*[_one(h) for h in HOSTS])
 
 
 async def _refresh_local() -> None:
@@ -1706,62 +1951,90 @@ async def _refresh_local() -> None:
         _local_refreshing = False
 
 
+async def _refresh_zerotier() -> None:
+    global _zerotier_refreshing
+    if _zerotier_refreshing:
+        return
+    _zerotier_refreshing = True
+    try:
+        _cache["zerotier"] = await asyncio.to_thread(zerotier_networks)
+        _cache["zerotier_ts"] = time.time()
+    finally:
+        _zerotier_refreshing = False
+
+
 async def _refresh_cache() -> None:
-    global _refreshing
+    global _refreshing, _cache_gen
     if _refreshing:
         return
     _refreshing = True
+    gen_at_start = _cache_gen
     try:
         # Local probe is fast — don't wait for the SSH sweep.
         asyncio.create_task(_refresh_local())
-        # Hard cap so a hung SSH host cannot pin _refreshing forever.
-        servers = await asyncio.wait_for(_collect(), timeout=150)
-        _cache["ts"] = time.time()
-        _cache["servers"] = servers
+        # Incremental update: cache updates as each host probe completes.
+        await asyncio.wait_for(_collect_incremental(), timeout=150)
+        # Final timestamp update
+        if _cache_gen == gen_at_start:
+            _cache["ts"] = time.time()
+            _cache["gen"] = _cache_gen
     except asyncio.TimeoutError:
-        # Keep last good cache if any; otherwise leave placeholders alone.
-        _cache["ts"] = time.time()
+        # Keep partial cache if any
+        if _cache_gen == gen_at_start:
+            _cache["ts"] = time.time()
+            _cache["gen"] = _cache_gen
     except Exception:
-        pass
+        logger.exception("refresh_cache failed")
     finally:
         _refreshing = False
 
 
-@app.on_event("startup")
 async def _startup_probe_local() -> None:
-    asyncio.create_task(_refresh_local())
+    global _scheduler_stop, _config_lock, _lifecycle_started
+    if _lifecycle_started:
+        return
+    _lifecycle_started = True
+    _scheduler_stop = asyncio.Event()
+    _config_lock = asyncio.Lock()
+    await asyncio.to_thread(_load_last_good_cache)
+    for host in HOSTS:
+        _host_generation.setdefault(host, 0)
+        _host_next_due[host] = 0.0
+    _track_task(_refresh_local())
+    _track_task(_refresh_zerotier())
+    _track_task(_metrics_scheduler())
     # Fire-and-forget first quota refresh so the UI shows real numbers
     # on first paint rather than placeholders.
-    asyncio.create_task(asyncio.to_thread(quotas_aggregator.refresh_now))
+    _track_task(asyncio.to_thread(quotas_aggregator.refresh_now))
     # Start GPU metrics history collection (every 5 minutes).
-    asyncio.create_task(_metrics_hist_collector())
+    _track_task(_metrics_hist_collector())
     # Do NOT auto-rewrite routes on startup. Overlay breakage is usually Amnezia
     # kill-switch WFP (WSAEACCES), not missing routes — see mesh health API.
 
 
 async def _metrics_hist_collector() -> None:
     """Collect GPU metrics every 5 minutes for historical tracking."""
-    import asyncio
+    await asyncio.sleep(60)
     while True:
         try:
-            # Collect metrics directly
-            servers = await asyncio.wait_for(_collect(), timeout=150)
+            servers = [
+                _host_cache[h]
+                for h in list(HOSTS)
+                if h in _host_cache and _host_cache[h].get("ok") and _host_cache[h].get("gpus")
+            ]
             for s in servers:
-                if not s.get("ok") or not s.get("gpus"):
-                    continue
                 host = s.get("host", "")
                 gpus = s.get("gpus", [])
                 if gpus:
                     await asyncio.to_thread(gpu_metrics_history.record_batch, host, gpus)
-            # Cleanup old records (older than 2 weeks)
             await asyncio.to_thread(gpu_metrics_history.cleanup_old)
         except Exception:
-            pass
-        await asyncio.sleep(300)  # 5 minutes
+            logger.exception("metrics_hist_collector tick failed")
+        await asyncio.sleep(300)
 
 
 @app.post("/api/protect-routes")
-async def protect_routes_endpoint() -> dict[str, Any]:
+async def protect_routes_endpoint(_admin: None = Depends(require_admin)) -> dict[str, Any]:
     out = await asyncio.to_thread(apply_protected_routes)
     zt = await asyncio.to_thread(zerotier_networks)
     return {"ok": True, "protect": out, "zerotier": zt}
@@ -1796,7 +2069,7 @@ async def api_mesh_watcher_status() -> dict[str, Any]:
 
 
 @app.post("/api/mesh/watcher-start")
-async def api_mesh_watcher_start() -> dict[str, Any]:
+async def api_mesh_watcher_start(_admin: None = Depends(require_admin)) -> dict[str, Any]:
     """Start GPUProfiler-MeshRouteWatcher via Task Scheduler (enable if needed)."""
     return await asyncio.to_thread(start_mesh_watcher)
 
@@ -1824,7 +2097,7 @@ async def api_quotas(debug: bool = False) -> dict[str, Any]:
 
 
 @app.post("/api/quotas/refresh")
-async def api_quotas_refresh(debug: bool = False) -> dict[str, Any]:
+async def api_quotas_refresh(debug: bool = False, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     """Force a refresh of all quota collectors and return the new snapshot."""
     snap = await asyncio.to_thread(quotas_aggregator.refresh_now)
     return {
@@ -1836,13 +2109,16 @@ async def api_quotas_refresh(debug: bool = False) -> dict[str, Any]:
 
 
 @app.post("/api/quotas/config")
-async def api_quotas_config(body: _QuotasConfigBody) -> dict[str, Any]:
+async def api_quotas_config(body: _QuotasConfigBody, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     """Persist MiniMax API key to `.env` (gitignored). Never echoes it back."""
     return await asyncio.to_thread(quotas_aggregator.set_minimax_config, body.api_key)
 
 
 class _TrackVisitBody(BaseModel):
-    username: str = Field(default="", description="Username to track")
+    username: str = Field(
+        default="", max_length=64, pattern=r"^[A-Za-z0-9_.@-]*$",
+        description="Opaque display identifier; never a credential",
+    )
 
 
 @app.post("/api/track/visit")
@@ -1852,27 +2128,36 @@ async def track_visit(body: _TrackVisitBody) -> dict[str, Any]:
 
 
 @app.get("/api/track/users")
-async def list_users() -> dict[str, Any]:
+async def list_users(_admin: None = Depends(require_admin)) -> dict[str, Any]:
     """List all tracked users."""
     users = await asyncio.to_thread(user_tracking.get_all_users)
     return {"users": users}
 
 
 class _UserSettingsBody(BaseModel):
-    username: str
+    username: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_.@-]+$")
     settings: dict[str, Any] = Field(default_factory=dict)
 
 
 @app.post("/api/track/settings")
-async def save_user_settings(body: _UserSettingsBody) -> dict[str, Any]:
+async def save_user_settings(
+    body: _UserSettingsBody, _admin: None = Depends(require_admin)
+) -> dict[str, Any]:
     """Save per-user settings."""
+    if len(json.dumps(body.settings, ensure_ascii=False)) > 16_384:
+        raise HTTPException(status_code=413, detail="settings payload too large")
     ok = await asyncio.to_thread(user_tracking.update_settings, body.username, body.settings)
     return {"ok": ok}
 
 
 @app.get("/api/track/settings/{username}")
-async def get_user_settings(username: str) -> dict[str, Any]:
+async def get_user_settings(
+    username: str,
+    _admin: None = Depends(require_admin),
+) -> dict[str, Any]:
     """Get per-user settings."""
+    if len(username) > 64 or not re.fullmatch(r"[A-Za-z0-9_.@-]+", username):
+        raise HTTPException(status_code=422, detail="invalid username")
     user = await asyncio.to_thread(user_tracking.get_user, username)
     if not user:
         return {"settings": {}}
@@ -1887,48 +2172,43 @@ async def get_user_settings(username: str) -> dict[str, Any]:
 @app.get("/api/metrics")
 async def metrics() -> dict[str, Any]:
     now = time.time()
-    cached_servers = _cache["servers"]
-    age = now - float(_cache["ts"]) if _cache["ts"] else 1e9
-    fresh = bool(cached_servers) and age < REFRESH_CACHE_SEC
+    zt = list(_cache.get("zerotier") or [])
 
-    local_age = now - float(_cache["local_ts"]) if _cache["local_ts"] else 1e9
-    if local_age >= LOCAL_REFRESH_SEC:
-        # Keep local card snappy even while SSH sweep is slow.
-        asyncio.create_task(_refresh_local())
+    # Build servers list from per-host cache
+    servers: list[dict[str, Any]] = []
+    for h in HOSTS:
+        if h in _host_cache:
+            servers.append(_host_cache[h])
+        else:
+            servers.append({
+                "host": h, "ok": False, "reachable": False,
+                "error": "загрузка…", "gpus": [], "ram": None,
+                "latency_ms": None, "paths": _host_cache_paths(h),
+            })
 
-    zt = await asyncio.to_thread(zerotier_networks)
-
-    if fresh:
+    if _host_cache:
         return {
             "updated_at": _cache["ts"],
             "cached": True,
-            "servers": _with_local(cached_servers),
-            "zerotier": zt,
-        }
-
-    # Don't block the UI behind a long SSH sweep: serve last data / placeholders
-    # and refresh in the background.
-    if not _refreshing:
-        asyncio.create_task(_refresh_cache())
-
-    if cached_servers:
-        return {
-            "updated_at": _cache["ts"],
-            "cached": True,
-            "servers": _with_local(cached_servers),
+            "servers": _with_local(servers),
             "zerotier": zt,
         }
 
     return {
         "updated_at": now,
         "cached": False,
-        "servers": _with_local(_placeholder_servers()),
+        "servers": _with_local(servers),
         "zerotier": zt,
     }
 
 
+@app.get("/api/diagnostics/ssh")
+async def api_ssh_diagnostics(_admin: None = Depends(require_admin)) -> dict[str, Any]:
+    return {"ok": True, **ssh_runtime.snapshot()}
+
+
 @app.get("/api/projects")
-async def projects() -> dict[str, Any]:
+async def projects(_admin: None = Depends(require_admin)) -> dict[str, Any]:
     servers = await asyncio.to_thread(discover_projects, HOSTS)
     servers["local"] = await asyncio.to_thread(discover_local_projects)
     return {"servers": servers}
@@ -2061,7 +2341,7 @@ async def vpn_off() -> dict[str, Any]:
 
 
 @app.post("/api/vpn/ssh/on")
-async def vpn_ssh_on() -> dict[str, Any]:
+async def vpn_ssh_on(_admin: None = Depends(require_admin)) -> dict[str, Any]:
     ok, out, already = await asyncio.to_thread(_ssh_vpn_start_now)
     # Soft-invalidate so next status poll re-reads ports quickly.
     _vpn_cache["ts"] = 0.0
@@ -2083,7 +2363,7 @@ async def vpn_ssh_on() -> dict[str, Any]:
 
 
 @app.post("/api/vpn/ssh/off")
-async def vpn_ssh_off() -> dict[str, Any]:
+async def vpn_ssh_off(_admin: None = Depends(require_admin)) -> dict[str, Any]:
     ok, out = await asyncio.to_thread(_ssh_vpn_stop_now)
     _vpn_cache["ts"] = 0.0
     _vpn_cache["data"] = None
@@ -2133,7 +2413,7 @@ class OpenCursorBody(BaseModel):
 
 
 @app.post("/api/open-cursor")
-async def open_cursor(body: OpenCursorBody) -> dict[str, Any]:
+async def open_cursor(body: OpenCursorBody, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     if body.host == "local":
         return open_local_project(body.path)
     if body.host not in HOSTS:
@@ -2149,7 +2429,7 @@ class AgentChatBody(BaseModel):
 
 
 @app.post("/api/open-agent")
-async def open_agent(body: OpenCursorBody) -> dict[str, Any]:
+async def open_agent(body: OpenCursorBody, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     """Start (or reuse) an SDK agent session bound to the remote project."""
     if body.host not in HOSTS:
         return {"ok": False, "error": f"unknown host: {body.host}"}
@@ -2167,7 +2447,7 @@ async def open_agent(body: OpenCursorBody) -> dict[str, Any]:
 
 
 @app.get("/api/agent/session")
-async def agent_session(host: str, path: str) -> dict[str, Any]:
+async def agent_session(host: str, path: str, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     if host not in HOSTS:
         return {"ok": False, "error": f"unknown host: {host}"}
     info = sdk_agent.session_info(host, path)
@@ -2177,7 +2457,7 @@ async def agent_session(host: str, path: str) -> dict[str, Any]:
 
 
 @app.post("/api/agent/chat")
-async def agent_chat(body: AgentChatBody) -> StreamingResponse:
+async def agent_chat(body: AgentChatBody, _admin: None = Depends(require_admin)) -> StreamingResponse:
     if body.host not in HOSTS:
         async def err_gen():  # noqa: ANN202
             yield f"data: {json.dumps({'type': 'error', 'text': 'unknown host'}, ensure_ascii=False)}\n\n"
@@ -2202,60 +2482,155 @@ async def agent_chat(body: AgentChatBody) -> StreamingResponse:
 
 
 @app.post("/api/agent/unlock")
-async def agent_unlock(body: OpenCursorBody) -> dict[str, Any]:
+async def agent_unlock(body: OpenCursorBody, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     if body.host not in HOSTS:
         return {"ok": False, "error": f"unknown host: {body.host}"}
     ok = await sdk_agent.force_unlock(body.host, body.path)
     return {"ok": ok}
 
 
-@app.get("/api/network/peers")
-async def api_network_peers() -> dict[str, Any]:
-    """Discover available peers from ZeroTier and NetBird networks."""
-    return await asyncio.to_thread(_discover_network_peers)
+def _parse_ssh_config() -> list[dict[str, str]]:
+    """Parse ~/.ssh/config and return list of Host entries."""
+    ssh_config = Path.home() / ".ssh" / "config"
+    if not ssh_config.is_file():
+        return []
+    hosts: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    current_aliases: list[str] = []
+    try:
+        for line in ssh_config.read_text(encoding="utf-8", errors="replace").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            parts = stripped.split(None, 1)
+            if len(parts) < 2:
+                continue
+            key, value = parts[0].lower(), parts[1].strip()
+            if key == "host":
+                if current and current_aliases:
+                    for alias in current_aliases:
+                        hosts.append({**current, "alias": alias})
+                aliases = value.split()
+                current_aliases = [a for a in aliases if "*" not in a and "?" not in a]
+                current = {}
+            elif current is not None:
+                if key == "hostname":
+                    current["hostname"] = value
+                elif key == "user":
+                    current["user"] = value
+                elif key == "port":
+                    current["port"] = value
+        if current and current_aliases:
+            for alias in current_aliases:
+                hosts.append({**current, "alias": alias})
+    except Exception:
+        pass
+    return hosts
+
+
+@app.get("/api/ssh-hosts")
+async def api_ssh_hosts(_admin: None = Depends(require_admin)) -> dict[str, Any]:
+    """Return SSH hosts from ~/.ssh/config, excluding already monitored hosts."""
+    hosts = _parse_ssh_config()
+    monitored = set(HOSTS)
+    return {"hosts": [h for h in hosts if h["alias"] not in monitored]}
 
 
 class _AddHostBody(BaseModel):
     hostname: str = Field(min_length=1, max_length=64)
-    network: str = Field(pattern="^(netbird|zerotier)$")
-    ip: str = Field(min_length=7, max_length=15)
+    network: str = Field(default="ssh")
+    ip: str = Field(min_length=1, max_length=256)
     port: int = Field(default=22, ge=1, le=65535)
     ssh_target: str | None = None
 
 
+def _write_host_paths_atomic(data: dict[str, Any]) -> None:
+    paths_file = ROOT / "host_paths.json"
+    temporary = paths_file.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    temporary.replace(paths_file)
+
+
+def _valid_ssh_target(value: str) -> bool:
+    return bool(re.fullmatch(r"(?:[A-Za-z0-9_.-]+@)?[A-Za-z0-9_.:-]+", value)) and not value.startswith("-")
+
+
 @app.post("/api/hosts")
-async def api_add_host(body: _AddHostBody) -> dict[str, Any]:
+async def api_add_host(body: _AddHostBody, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     """Add a new host to host_paths.json and the in-memory HOSTS list."""
     if not re.match(r"^[a-zA-Z0-9_-]+$", body.hostname):
         return {"ok": False, "error": "hostname: letters, digits, _ and - only"}
-    if not re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", body.ip):
-        return {"ok": False, "error": "ip: must be IPv4"}
-    if body.hostname in HOSTS:
-        return {"ok": False, "error": f"host '{body.hostname}' already exists"}
-
-    existing = load_host_paths()
-    if body.hostname in existing:
-        return {"ok": False, "error": f"host '{body.hostname}' already in host_paths.json"}
-
     ssh_target = body.ssh_target or f"reedgern@{body.ip}"
+    if not _valid_ssh_target(ssh_target) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", body.ip):
+        return {"ok": False, "error": "invalid IP/SSH target"}
     path_entry: dict[str, Any] = {
-        "id": body.network,
-        "label": f"{body.network} ({body.ip})",
+        "id": f"ssh-{body.hostname}",
+        "label": f"SSH ({body.ip})",
         "kind": "ssh",
         "ssh_target": ssh_target,
         "ip": body.ip,
         "port": body.port,
     }
 
-    existing[body.hostname] = [path_entry]
-    paths_file = Path(__file__).resolve().parent / "host_paths.json"
-    paths_file.write_text(
-        json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    HOSTS.append(body.hostname)
+    lock = _config_lock or asyncio.Lock()
+    async with lock:
+        if body.hostname in HOSTS:
+            return {"ok": False, "error": f"host '{body.hostname}' already exists"}
+        existing = load_host_paths()
+        if body.hostname in existing:
+            return {"ok": False, "error": f"host '{body.hostname}' already in host_paths.json"}
+        existing[body.hostname] = [path_entry]
+        await asyncio.to_thread(_write_host_paths_atomic, existing)
+        HOSTS.append(body.hostname)
+        _host_generation[body.hostname] = _host_generation.get(body.hostname, 0) + 1
+        _host_next_due[body.hostname] = 0.0
+    _cache["ts"] = time.time()
+
+    placeholder = {
+        "host": body.hostname,
+        "ok": False,
+        "reachable": False,
+        "error": "загрузка…",
+        "gpus": [],
+        "ram": None,
+        "latency_ms": None,
+        "paths": [path_entry],
+    }
+    _host_cache[body.hostname] = placeholder
+
+    _launch_host_probe(body.hostname, immediate=True)
 
     return {"ok": True, "host": body.hostname, "paths": [path_entry]}
+
+
+@app.delete("/api/hosts/{hostname}")
+async def api_delete_host(hostname: str, _admin: None = Depends(require_admin)) -> dict[str, Any]:
+    """Remove a host from host_paths.json and the in-memory HOSTS list."""
+    if hostname not in HOSTS:
+        return {"ok": False, "error": f"host '{hostname}' not found"}
+    lock = _config_lock or asyncio.Lock()
+    async with lock:
+        if hostname not in HOSTS:
+            return {"ok": False, "error": f"host '{hostname}' not found"}
+        existing = load_host_paths()
+        if hostname in existing:
+            del existing[hostname]
+            await asyncio.to_thread(_write_host_paths_atomic, existing)
+        HOSTS.remove(hostname)
+        _host_generation[hostname] = _host_generation.get(hostname, 0) + 1
+    task = _host_tasks.pop(hostname, None)
+    if task and not task.done():
+        task.cancel()
+    _host_next_due.pop(hostname, None)
+    _host_failures.pop(hostname, None)
+    _cache["ts"] = time.time()
+    _host_cache.pop(hostname, None)
+    try:
+        await asyncio.to_thread(_last_good_path(hostname).unlink, True)
+    except OSError:
+        logger.exception("failed to remove persisted cache for %s", hostname)
+
+    return {"ok": True, "host": hostname}
 
 
 def _discover_network_peers() -> dict[str, Any]:
@@ -2349,13 +2724,25 @@ def _discover_network_peers() -> dict[str, Any]:
     return result
 
 
-@app.on_event("shutdown")
 async def _shutdown_sdk() -> None:
+    global _lifecycle_started
+    if _scheduler_stop is not None:
+        _scheduler_stop.set()
+    for task in list(_host_tasks.values()):
+        task.cancel()
+    current = asyncio.current_task()
+    tasks = [task for task in list(_background_tasks) if task is not current and not task.done()]
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    _host_tasks.clear()
     await sdk_agent.close_client()
+    _lifecycle_started = False
 
 
 @app.get("/api/fs/roots")
-async def api_fs_roots(host: str) -> dict[str, Any]:
+async def api_fs_roots(host: str, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     if host == "local":
         data = local_fs_list(None)
         return {
@@ -2369,7 +2756,7 @@ async def api_fs_roots(host: str) -> dict[str, Any]:
 
 
 @app.get("/api/fs/list")
-async def api_fs_list(host: str, path: str | None = None) -> dict[str, Any]:
+async def api_fs_list(host: str, path: str | None = None, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     if host == "local":
         return local_fs_list(path)
     if host not in HOSTS:
@@ -2378,7 +2765,7 @@ async def api_fs_list(host: str, path: str | None = None) -> dict[str, Any]:
 
 
 @app.get("/api/fs/repos")
-async def api_fs_repos(host: str) -> dict[str, Any]:
+async def api_fs_repos(host: str, _admin: None = Depends(require_admin)) -> dict[str, Any]:
     if host == "local":
         return {"ok": True, "repos": [], "home": local_fs_list(None).get("home")}
     if host not in HOSTS:

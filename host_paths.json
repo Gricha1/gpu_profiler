@@ -1,115 +1,4 @@
 {
-  "lab_comp": [
-    {
-      "id": "ssh_config",
-      "label": "ssh config (jump cds2)",
-      "kind": "ssh",
-      "ssh_target": "lab_comp",
-      "ip": "10.43.71.7",
-      "port": 22,
-      "via": "ProxyJump cds2",
-      "protected": true,
-      "prefer_for_probe": true
-    },
-    {
-      "id": "zt_jump_cds2",
-      "label": "ZT cds via cds2",
-      "kind": "ssh",
-      "ssh_target": "reedgern@10.43.71.7",
-      "ip": "10.43.71.7",
-      "port": 22,
-      "via": "cds2",
-      "ssh_opts": [
-        "-o",
-        "ProxyJump=cds2",
-        "-o",
-        "IdentitiesOnly=yes"
-      ],
-      "protected": true
-    },
-    {
-      "id": "zt_cds_direct",
-      "label": "ZT cds_team",
-      "kind": "ssh",
-      "ssh_target": "reedgern@10.43.71.7",
-      "ip": "10.43.71.7",
-      "port": 22,
-      "ssh_opts": [
-        "-o",
-        "ProxyJump=none",
-        "-o",
-        "IdentitiesOnly=yes"
-      ],
-      "tcp": [
-        "10.43.71.7",
-        22
-      ]
-    },
-    {
-      "id": "zt_home",
-      "label": "ZT network_home",
-      "kind": "ssh",
-      "ssh_target": "reedgern@192.168.194.7",
-      "ip": "192.168.194.7",
-      "port": 22,
-      "ssh_opts": [
-        "-o",
-        "ProxyJump=none",
-        "-o",
-        "IdentitiesOnly=yes"
-      ],
-      "tcp": [
-        "192.168.194.7",
-        22
-      ],
-      "require_ssh": true
-    },
-    {
-      "id": "zt_172",
-      "label": "ZT 172.24",
-      "kind": "ssh",
-      "ssh_target": "reedgern@172.24.158.182",
-      "ip": "172.24.158.182",
-      "port": 22,
-      "ssh_opts": [
-        "-o",
-        "ProxyJump=none",
-        "-o",
-        "IdentitiesOnly=yes"
-      ],
-      "tcp": [
-        "172.24.158.182",
-        22
-      ],
-      "zt_nwid": "0cccb752f7a913d8",
-      "note": "Windows node must be authorized on this ZT network"
-    },
-    {
-      "id": "lan",
-      "label": "LAN",
-      "kind": "ssh",
-      "ssh_target": "reedgern@192.168.50.18",
-      "ip": "192.168.50.18",
-      "port": 22,
-      "ssh_opts": [
-        "-o",
-        "ProxyJump=none",
-        "-o",
-        "IdentitiesOnly=yes"
-      ],
-      "tcp": [
-        "192.168.50.18",
-        22
-      ]
-    },
-    {
-      "id": "anydesk",
-      "label": "AnyDesk",
-      "kind": "anydesk",
-      "ip": "582031545",
-      "anydesk_id": "582031545"
-    }
-  ],
   "aicenter1": [
     {
       "id": "ssh_config",
@@ -392,64 +281,34 @@
       ]
     }
   ],
-  "ml3": [
+  "fic_comp": [
     {
-      "id": "ssh_config",
-      "label": "ssh / gater",
+      "id": "ssh-fic_comp",
+      "label": "SSH (192.168.194.193)",
       "kind": "ssh",
-      "ssh_target": "ml3",
-      "ip": "83.149.227.22",
-      "port": 9189,
-      "host": "gater.frccsc.ru",
-      "prefer_for_probe": true
-    },
-    {
-      "id": "gater",
-      "label": "gater.frccsc.ru",
-      "kind": "ssh",
-      "ssh_target": "ggorbov@gater.frccsc.ru",
-      "ip": "83.149.227.22",
-      "port": 9189,
-      "ssh_opts": [
-        "-o",
-        "ProxyJump=none",
-        "-p",
-        "9189"
-      ],
-      "tcp": [
-        "gater.frccsc.ru",
-        9189
-      ]
+      "ssh_target": "reedgern@192.168.194.193",
+      "ip": "192.168.194.193",
+      "port": 22
     }
   ],
   "ml4": [
     {
-      "id": "ssh_config",
-      "label": "ssh / gater",
+      "id": "ssh-ml4",
+      "label": "SSH (gater.frccsc.ru)",
       "kind": "ssh",
-      "ssh_target": "ml4",
-      "ip": "83.149.227.22",
-      "port": 9191,
-      "host": "gater.frccsc.ru",
-      "prefer_for_probe": true
-    },
+      "ssh_target": "reedgern@gater.frccsc.ru",
+      "ip": "gater.frccsc.ru",
+      "port": 9191
+    }
+  ],
+  "ml3": [
     {
-      "id": "gater",
-      "label": "gater.frccsc.ru",
+      "id": "ssh-ml3",
+      "label": "SSH (gater.frccsc.ru)",
       "kind": "ssh",
-      "ssh_target": "ggorbov@gater.frccsc.ru",
-      "ip": "83.149.227.22",
-      "port": 9191,
-      "ssh_opts": [
-        "-o",
-        "ProxyJump=none",
-        "-p",
-        "9191"
-      ],
-      "tcp": [
-        "gater.frccsc.ru",
-        9191
-      ]
+      "ssh_target": "reedgern@gater.frccsc.ru",
+      "ip": "gater.frccsc.ru",
+      "port": 9189
     }
   ]
 }

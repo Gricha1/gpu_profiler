@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cursor_projects import is_safe_remote_path
+import ssh_runtime
 
 ROOT = Path(__file__).resolve().parent
 FS_SCRIPT = (ROOT / "remote_fs.py").read_bytes()
@@ -15,44 +16,50 @@ SSH_TIMEOUT_SEC = 16
 
 
 async def _ssh_python(host: str, args: list[str]) -> dict[str, Any]:
-    proc = await asyncio.create_subprocess_exec(
-        "ssh",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        f"ConnectTimeout={SSH_TIMEOUT_SEC}",
-        "-o",
-        "StrictHostKeyChecking=accept-new",
-        host,
-        "python3",
-        "-",
-        *args,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    started, _waited = await asyncio.to_thread(ssh_runtime.acquire, host, "filesystem")
+    timed_out = False
+    failed = False
+    proc: asyncio.subprocess.Process | None = None
     try:
-        stdout_b, stderr_b = await asyncio.wait_for(
-            proc.communicate(input=FS_SCRIPT), timeout=SSH_TIMEOUT_SEC + 8
+        proc = await asyncio.create_subprocess_exec(
+            "ssh", "-o", "BatchMode=yes", "-o", f"ConnectTimeout={SSH_TIMEOUT_SEC}",
+            "-o", "StrictHostKeyChecking=accept-new", host, "python3", "-", *args,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
-        return {"ok": False, "error": "timeout"}
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(
+                proc.communicate(input=FS_SCRIPT), timeout=SSH_TIMEOUT_SEC + 8
+            )
+        except asyncio.TimeoutError:
+            timed_out = True
+            proc.kill()
+            await proc.wait()
+            return {"ok": False, "error": "timeout"}
 
-    out = stdout_b.decode("utf-8", errors="replace").strip()
-    err = stderr_b.decode("utf-8", errors="replace").strip()
-    if not out:
-        return {"ok": False, "error": err or f"ssh exit {proc.returncode}"}
-    # script prints one JSON object; take last non-empty line if warnings exist
-    line = out.splitlines()[-1]
-    try:
-        data = json.loads(line)
-    except json.JSONDecodeError:
-        return {"ok": False, "error": err or out[:300]}
-    if isinstance(data, dict):
-        return data
-    return {"ok": False, "error": "bad response"}
+        out = stdout_b.decode("utf-8", errors="replace").strip()
+        err = stderr_b.decode("utf-8", errors="replace").strip()
+        if not out:
+            failed = True
+            return {"ok": False, "error": err or f"ssh exit {proc.returncode}"}
+        line = out.splitlines()[-1]
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            failed = True
+            return {"ok": False, "error": err or out[:300]}
+        if isinstance(data, dict):
+            return data
+        failed = True
+        return {"ok": False, "error": "bad response"}
+    except asyncio.CancelledError:
+        failed = True
+        if proc is not None and proc.returncode is None:
+            proc.kill()
+            await proc.wait()
+        raise
+    finally:
+        ssh_runtime.release(host, started, timeout=timed_out, error=failed)
 
 
 async def fs_roots(host: str) -> dict[str, Any]:

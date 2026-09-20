@@ -90,7 +90,10 @@ is a compatibility wrapper that just calls the launcher installer.)
 | `POST /api/open-agent` / `/api/agent/{session,chat,unlock}` | Optional Cursor SDK agent |
 | `GET /chatgpt.pac`                        | PAC file (read from `~/.ssh/timeweb-vpn/chatgpt.pac`) |
 
-Auth: none at HTTP layer. Backend binds to loopback only.
+Read-only monitoring endpoints are public to the bound interface. Mutating or
+sensitive endpoints use `require_admin`: loopback clients are trusted; remote
+clients must send `Authorization: Bearer <GPU_MONITOR_ADMIN_TOKEN>` or
+`X-Admin-Token`. The canonical launcher still binds to loopback only.
 
 ---
 
@@ -104,10 +107,11 @@ Desktop → launchers/GPU Profiler.exe
                  └─ python -m uvicorn app:app --host 127.0.0.1 --port 8765
                       ├─ /static/index.html   (UI)
                       ├─ /api/metrics         → host_paths.py + remote_probe.py / local_probe.py
-                      │     ├─ asyncio.Semaphore(3) over SSH (`ssh -o BatchMode=yes ...`)
-                      │     ├─ Per host: prefer_for_probe path → protected path → any live ssh path
-                      │     ├─ Hard cap 150s per full sweep; cache 4s
-                      │     └─ /api/metrics returns cached / placeholder + background refresh
+                      │     ├─ one scheduler task, independent per-host due times + backoff
+                      │     ├─ asyncio.Semaphore(3) over host probes
+                      │     ├─ ssh_runtime global hard cap 3 over metrics/routes/FS/agent/VPN SSH
+                      │     ├─ preferred route first; alternate-route fan-out only after failure
+                      │     └─ /api/metrics only reads cached / placeholder state
                       ├─ /api/network/public-ip → services/public_ip.py (ipapi.co, 45s cache)
                       ├─ /api/network/mesh-health → services/mesh_health.py (NetBird + ZT TCP, 15s cache)
                       ├─ /api/mesh/watcher-status → services/mesh_watcher_status.py (reads heartbeat JSON)
@@ -272,14 +276,28 @@ at `LOCAL_REFRESH_SEC = 2.0` independently of the remote sweep.
 
 ### 5.2 Concurrency, timeouts, caching
 
-- `REFRESH_CACHE_SEC = 4` (`app.py`). `/api/metrics` returns cached data if
-  younger than 4s, otherwise serves last data and triggers a background refresh.
-- `asyncio.Semaphore(3)` (`app.py:1647`) caps parallel SSH sweeps.
-- Hard cap: `asyncio.wait_for(_collect(), timeout=150)` — full sweep stops at
-  150s.
+- A single `_metrics_scheduler()` owns regular collection. Default successful
+  interval is 15s (`GPU_MONITOR_REFRESH_SEC`); failures back off exponentially
+  up to 120s (`GPU_MONITOR_BACKOFF_MAX_SEC`). `/api/metrics` never starts SSH.
+- `_host_tasks` prevents duplicate probes per host. `_host_generation` prevents
+  a late DELETE→ADD result from being committed to the new host identity.
+- `asyncio.Semaphore(3)` caps concurrent host probes. `ssh_runtime.py` adds the
+  authoritative process-wide cap (default 3, `GPU_MONITOR_SSH_MAX_ACTIVE`) to
+  metrics, alternate-route checks, file browsing, SDK-agent tools and legacy
+  VPN SSH checks. Diagnostics: authenticated `GET /api/diagnostics/ssh`.
+- A successful regular probe does not re-check every route. Cached route
+  diagnostics live for 300s and full diagnosis is triggered after failure.
+- Failed probes preserve the last successful GPU/RAM/disk payload with
+  `stale=true`, `connection_ok=false`, `last_success_at`, `last_attempt_at`
+  and the current connection error.
+- Every successful host snapshot is atomically persisted under
+  `data/metrics/last_good/<host>.json`. Startup restores it as stale before
+  scheduling SSH, so a backend restart never replaces known metrics with a
+  loading placeholder. These runtime files are gitignored and excluded from
+  source archives.
 - `SSH_TIMEOUT_SEC = 8`, `SSH_JUMP_TIMEOUT_SEC = 14` (`app.py`). `host_paths.py`
   uses 5–12s per path depending on ProxyJump and target.
-- `_path_cache` in `host_paths.py` keeps path results 25s.
+- `_path_cache` in `host_paths.py` keeps route diagnostic results 300s.
 - `services/mesh_health.py` caches 15s. `services/public_ip.py` caches 45s and
   persists the base IP.
 - `_vpn_cache` in `app.py` caches 10s but always re-checks proxy TCP ports
@@ -297,6 +315,32 @@ at `LOCAL_REFRESH_SEC = 2.0` independently of the remote sweep.
   cause (WFP kill-switch, peer offline, etc).
 - `/api/metrics` returns placeholders with `reachable=false` and `error=загрузка…`
   on cold cache, and never blocks the UI behind a long SSH sweep.
+
+### 5.4 Backend process model
+
+The in-memory cache, scheduler and SSH limiter are process-local. Production
+must use exactly one uvicorn worker; `scripts/start.ps1` intentionally launches
+uvicorn without `--workers` or `--reload`. Multiple workers would create
+independent collectors and are unsupported unless state/scheduling is first
+moved to an external coordinator.
+
+### 5.5 Frontend update invariants
+
+- `static/app.js?v=19` permits only one in-flight metrics request and rejects
+  responses that predate an ADD/DELETE mutation.
+- Known metrics are retained when an older backend returns a loading/error
+  placeholder; the card becomes stale rather than empty.
+- Cards are keyed by host and are not unconditionally re-appended on every
+  tick. While a settings (gear) menu is open, render updates do not replace or
+  move cards; window/grid scroll positions are restored after normal updates.
+- Successful UI ADD/DELETE mutations are overlaid on metrics responses and
+  persisted as hostname sets in browser localStorage. An old aggregate
+  snapshot therefore cannot temporarily remove a newly added card or resurrect
+  a deleted one; backend rows may update the card but not reverse the mutation.
+- Display state has the priority `success > concrete connection error > loading`.
+  The latest concrete per-host error is kept in browser localStorage, so a
+  later polling placeholder cannot replace `connection timed out` with
+  `loading`; polling itself continues normally in the background.
 
 ---
 

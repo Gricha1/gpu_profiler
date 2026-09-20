@@ -25,6 +25,7 @@ from cursor_sdk import (
 )
 
 from cursor_projects import is_safe_remote_path
+import ssh_runtime
 
 ROOT = Path(__file__).resolve().parent
 WORKSPACES = ROOT / "_agent_workspaces"
@@ -74,29 +75,18 @@ def _ssh_run(host: str, remote_cwd: str, command: str, timeout: int = SSH_TIMEOU
     # Run inside project dir; keep shell simple and quoted.
     remote = f"cd {json.dumps(remote_cwd)} && ( {command} )"
     try:
-        proc = subprocess.run(
-            [
-                "ssh",
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                f"ConnectTimeout=10",
-                "-o",
-                "ConnectionAttempts=1",
-                "-o",
-                "StrictHostKeyChecking=accept-new",
-                host,
-                "bash",
-                "-lc",
-                remote,
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-        )
+        with ssh_runtime.slot(host, "agent"):
+            proc = subprocess.run(
+                [
+                    "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                    "-o", "ConnectionAttempts=1", "-o",
+                    "StrictHostKeyChecking=accept-new", host, "bash", "-lc", remote,
+                ],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout,
+            )
     except subprocess.TimeoutExpired:
+        ssh_runtime.note_result(host, timeout=True)
         return f"error: ssh timeout after {timeout}s"
     except Exception as exc:  # noqa: BLE001
         return f"error: {exc}"
