@@ -18,7 +18,7 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./runtime:/app/runtime
-      - ./config/local:/app/config-local
+      - gpu-profiler-config:/app/config-local
       - ${HOME}/.ssh:/home/app/.ssh:ro
   gpu-profiler-debug:
     build:
@@ -42,3 +42,6 @@ services:
       - ./:/host-repo
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker:ro
+
+volumes:
+  gpu-profiler-config:
