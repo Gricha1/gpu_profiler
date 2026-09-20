@@ -30,6 +30,10 @@ def test_user_visibility_and_ip_binding(tmp_path: Path):
         assert user_config.get_host("aicenter1")["visibility"] == "core"
         assert user_config.get_host("h200")["visibility"] == "core"
         assert user_config.get_host("legacy")["visibility"] == "shared"
+        assert user_config.rename_host("aicenter1", "Большой GPU") is True
+        renamed = user_config.get_host("aicenter1")
+        assert renamed["display_name"] == "Большой GPU"
+        assert renamed["hostname"] == "aicenter1"
     finally:
         user_config.configure(original)
 
@@ -63,3 +67,45 @@ def test_host_delete_permissions():
     assert app._can_delete_host(alice, private)
     assert not app._can_delete_host(bob, private)
     assert app._can_delete_host(admin, core)
+
+
+def test_existing_database_gets_display_name_migration(tmp_path: Path):
+    import sqlite3
+
+    database = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(database) as db:
+        db.executescript("""
+            CREATE TABLE users (username TEXT PRIMARY KEY COLLATE NOCASE, is_admin INTEGER NOT NULL, created_at REAL NOT NULL);
+            CREATE TABLE ip_bindings (ip TEXT PRIMARY KEY, username TEXT NOT NULL, updated_at REAL NOT NULL);
+            CREATE TABLE hosts (hostname TEXT PRIMARY KEY COLLATE NOCASE, owner TEXT, visibility TEXT NOT NULL, paths_json TEXT NOT NULL, created_at REAL NOT NULL);
+        """)
+    original = user_config._db_path
+    try:
+        user_config.configure(database)
+        user_config.initialize({})
+        with sqlite3.connect(database) as db:
+            columns = {row[1] for row in db.execute("PRAGMA table_info(hosts)")}
+        assert "display_name" in columns
+    finally:
+        user_config.configure(original)
+
+
+def test_only_admin_can_rename_host(tmp_path: Path, monkeypatch):
+    original = user_config._db_path
+    try:
+        user_config.configure(tmp_path / "rename.sqlite3")
+        user_config.initialize({"h200": [{"ssh_target": "h200"}]})
+        monkeypatch.setenv("GPU_MONITOR_ADMIN_PASSWORD", "0000")
+        client = TestClient(app.app)
+        assert client.post("/api/session", json={"username": "alice"}).status_code == 200
+        denied = client.patch("/api/hosts/h200", json={"display_name": "H200 Lab"})
+        assert denied.status_code == 403
+        assert client.post(
+            "/api/session", json={"username": "admin", "password": "0000"}
+        ).status_code == 200
+        renamed = client.patch("/api/hosts/h200", json={"display_name": "H200 Lab"})
+        assert renamed.status_code == 200
+        assert renamed.json()["display_name"] == "H200 Lab"
+        assert user_config.get_host("h200")["hostname"] == "h200"
+    finally:
+        user_config.configure(original)

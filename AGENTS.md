@@ -326,7 +326,7 @@ moved to an external coordinator.
 
 ### 5.5 Frontend update invariants
 
-- `static/app.js?v=22` permits only one in-flight metrics request and rejects
+- `static/app.js?v=23` permits only one in-flight metrics request and rejects
   responses that predate an ADD/DELETE mutation.
 - Known metrics are retained when an older backend returns a loading/error
   placeholder; the card becomes stale rather than empty.
@@ -354,6 +354,8 @@ moved to an external coordinator.
   additions are private to their owner.
 - Admin may delete any host. A normal user may delete only their own private
   hosts. The backend enforces this rule; hiding the gear icon is only a UI aid.
+- Admin may set a per-host `display_name`. Renaming is presentation-only and
+  must never change the SSH hostname, scheduler key, history key or cache path.
 - `host_paths.json` is a runtime compatibility mirror of the SQLite inventory,
   not the ownership authority.
 

@@ -52,6 +52,9 @@ def initialize(initial_hosts: dict[str, list[dict[str, Any]]]) -> None:
             CREATE INDEX IF NOT EXISTS idx_hosts_owner ON hosts(owner);
             """
         )
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(hosts)")}
+        if "display_name" not in columns:
+            db.execute("ALTER TABLE hosts ADD COLUMN display_name TEXT")
         now = time.time()
         db.execute(
             "INSERT OR IGNORE INTO users(username,is_admin,created_at) VALUES('admin',1,?)",
@@ -113,7 +116,7 @@ def all_hosts() -> dict[str, list[dict[str, Any]]]:
 def visible_hosts(username: str) -> list[dict[str, Any]]:
     with _lock, _connect() as db:
         rows = db.execute(
-            """SELECT hostname,owner,visibility FROM hosts
+            """SELECT hostname,owner,visibility,display_name FROM hosts
                WHERE visibility IN ('core','shared') OR owner=? COLLATE NOCASE
                ORDER BY created_at,hostname""", (username,)
         ).fetchall()
@@ -123,7 +126,7 @@ def visible_hosts(username: str) -> list[dict[str, Any]]:
 def get_host(hostname: str) -> dict[str, Any] | None:
     with _lock, _connect() as db:
         row = db.execute(
-            "SELECT hostname,owner,visibility,paths_json FROM hosts WHERE hostname=? COLLATE NOCASE",
+            "SELECT hostname,owner,visibility,display_name,paths_json FROM hosts WHERE hostname=? COLLATE NOCASE",
             (hostname,),
         ).fetchone()
     if not row:
@@ -146,3 +149,11 @@ def delete_host(hostname: str) -> None:
     with _lock, _connect() as db:
         db.execute("DELETE FROM hosts WHERE hostname=? COLLATE NOCASE", (hostname,))
 
+
+def rename_host(hostname: str, display_name: str | None) -> bool:
+    with _lock, _connect() as db:
+        cursor = db.execute(
+            "UPDATE hosts SET display_name=? WHERE hostname=? COLLATE NOCASE",
+            (display_name, hostname),
+        )
+        return cursor.rowcount == 1

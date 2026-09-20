@@ -290,7 +290,7 @@
 
     function renderServer(s) {
       const isLocal = !!s.local || s.host === "local";
-      const title = isLocal ? (`этот ПК · ${s.label || s.host}`) : s.host;
+      const title = isLocal ? (`этот ПК · ${s.label || s.host}`) : (s.display_name || s.host);
       const online = s.connection_ok == null ? hostOnline(s) : !!s.connection_ok;
       const hasMetrics = !!s.ok;
       const via = s.ssh_via && s.ssh_via !== s.host ? ` via ${s.ssh_via}` : "";
@@ -445,6 +445,7 @@
             ${s.can_delete ? `<div class="card-settings">
               <button type="button" class="card-settings-btn" data-host="${escapeHtml(s.host)}" title="Опции">&#9881;</button>
               <div class="card-settings-menu" data-host="${escapeHtml(s.host)}">
+                ${s.can_rename ? `<button type="button" class="card-settings-item" data-action="rename" data-host="${escapeHtml(s.host)}">&#9998; Переименовать</button>` : ""}
                 <button type="button" class="card-settings-item danger" data-action="delete" data-host="${escapeHtml(s.host)}">&#10005; Удалить</button>
               </div>
             </div>` : ""}
@@ -2073,6 +2074,26 @@
         document.getElementById("deleteModal").setAttribute("aria-hidden", "false");
         document.querySelectorAll(".card-settings-menu.open").forEach(m => m.classList.remove("open"));
         deleteModalTarget = host;
+        return;
+      }
+      const renameBtn = e.target.closest('.card-settings-item[data-action="rename"]');
+      if (renameBtn) {
+        e.stopPropagation();
+        const host = renameBtn.dataset.host;
+        const server = window._lastMetricsData?.servers?.find(row => row.host === host);
+        const value = window.prompt("Новое название карточки", server?.display_name || host);
+        document.querySelectorAll(".card-settings-menu.open").forEach(m => m.classList.remove("open"));
+        if (!value || !value.trim()) return;
+        fetch(`/api/hosts/${encodeURIComponent(host)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ display_name: value.trim() }),
+        }).then(async response => {
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.detail || data.error || "Ошибка переименования");
+          if (server) server.display_name = data.display_name;
+          renderGrid();
+        }).catch(error => window.alert(error.message || "Ошибка переименования"));
         return;
       }
     });

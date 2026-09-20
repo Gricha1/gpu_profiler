@@ -233,7 +233,7 @@ GET /api/diagnostics/ssh
 
 ## 5. Frontend и непрерывное отображение карточек
 
-Frontend подключается как `static/app.js?v=22`.
+Frontend подключается как `static/app.js?v=23`.
 
 Исправлены три независимые гонки:
 
@@ -300,6 +300,11 @@ Frontend подключается как `static/app.js?v=22`.
 
 `host_paths.json` сохраняется как runtime-зеркало для существующего SSH probe;
 источником ownership и visibility является SQLite.
+
+Администратор также видит пункт «Переименовать» в меню карточки. Он изменяет
+только `hosts.display_name` в SQLite. Технический hostname, SSH target, ключи
+scheduler/cache/history и URL API не меняются. Обычным пользователям операция
+недоступна и в UI, и через backend `PATCH /api/hosts/{hostname}`.
 
 ### ADD
 
@@ -442,6 +447,7 @@ Mesh Route Watcher работает вне backend как Windows Scheduled Task
 | Обычный пользователь мог удалить общий host | Удаление защищалось только общим admin guard | Backend ACL: owner удаляет private, admin удаляет любой |
 | Поле пароля admin было видно сразу | CSS `label { display:grid }` перебивал HTML `hidden` | `.user-login-fields [hidden] { display:none!important }` и отдельный второй шаг |
 | Чистое Linux-развёртывание падало при import | `sdk_agent.py` использовал незаявленный `cursor-sdk` | `cursor-sdk>=1.0.27` добавлен в `requirements.txt` |
+| Переименование могло бы сломать SSH/cache identity | UI раньше показывал только технический hostname | Отдельное SQLite-поле `display_name`, admin-only PATCH |
 
 ---
 
@@ -458,7 +464,7 @@ python -m py_compile app.py host_paths.py remote_browse.py sdk_agent.py ssh_runt
 Результат последнего запуска:
 
 ```text
-29 passed
+31 passed
 JavaScript syntax: OK
 Python syntax: OK
 FastAPI lifespan smoke: HTTP 200
@@ -543,7 +549,7 @@ baseline до изменений не существовало, поэтому �
 5. Визуальный browser screenshot regression не входит в автоматические тесты.
 6. Текущий процесс на `0.0.0.0:8000`, обнаруженный во время диагностики, был
    запущен отдельно от канонического `scripts/start.ps1`. Статические файлы
-   `v22` он читает с диска сразу, но новая backend persistence активируется
+   `v23` он читает с диска сразу, но новая backend persistence активируется
    только после безопасного перезапуска этого конкретного deployment.
 
 ---

@@ -186,6 +186,8 @@ def test_frontend_serializes_polling_and_guards_mutations():
     assert "showAdminPasswordStep" in source
     assert "userLoginBack" in source
     assert ".user-login-fields [hidden] { display: none !important; }" in html
+    assert 'data-action="rename"' in source
+    assert 'method: "PATCH"' in source
 
 
 def test_ssh_diagnostics_contains_required_counters():

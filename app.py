@@ -2243,7 +2243,9 @@ async def metrics(request: Request) -> dict[str, Any]:
             }
         row["visibility"] = access["visibility"]
         row["owner"] = access["owner"]
+        row["display_name"] = access.get("display_name") or h
         row["can_delete"] = _can_delete_host(user, access)
+        row["can_rename"] = bool(user["is_admin"])
         servers.append(row)
 
     if _host_cache:
@@ -2605,6 +2607,10 @@ class _AddHostBody(BaseModel):
     ssh_target: str | None = None
 
 
+class _RenameHostBody(BaseModel):
+    display_name: str = Field(min_length=1, max_length=80)
+
+
 def _write_host_paths_atomic(data: dict[str, Any]) -> None:
     paths_file = ROOT / "host_paths.json"
     temporary = paths_file.with_suffix(".json.tmp")
@@ -2669,6 +2675,22 @@ async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
         "visibility": "shared" if user["is_admin"] else "private",
         "owner": user["username"], "can_delete": True,
     }
+
+
+@app.patch("/api/hosts/{hostname}")
+async def api_rename_host(
+    hostname: str, body: _RenameHostBody, request: Request
+) -> dict[str, Any]:
+    """Change only the card title; SSH hostname and cache identity stay stable."""
+    user = _current_user(request)
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="только администратор может переименовывать серверы")
+    display_name = " ".join(body.display_name.split())
+    if not display_name or any(ord(char) < 32 for char in display_name):
+        raise HTTPException(status_code=422, detail="некорректное отображаемое имя")
+    if not await asyncio.to_thread(user_config.rename_host, hostname, display_name):
+        raise HTTPException(status_code=404, detail="сервер не найден")
+    return {"ok": True, "host": hostname, "display_name": display_name}
 
 
 @app.delete("/api/hosts/{hostname}")
