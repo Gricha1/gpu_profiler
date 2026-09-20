@@ -49,6 +49,7 @@ from services.quotas import aggregator as quotas_aggregator
 import user_tracking
 import gpu_metrics_history
 import ssh_runtime
+import user_config
 
 HOSTS = list(load_host_paths().keys())
 
@@ -58,6 +59,7 @@ REFRESH_CACHE_SEC = 4
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
+USERS_DB = ROOT / "data" / "users.sqlite3"
 LAST_GOOD_DIR = ROOT / "data" / "metrics" / "last_good"
 VPN_DIR = Path.home() / ".ssh" / "timeweb-vpn"
 VPN_BYPASS_SCRIPT = VPN_DIR / "amnezia-bypass-routes.ps1"
@@ -121,6 +123,9 @@ def _load_dotenv(path: Path = ROOT / ".env") -> None:
 
 
 _load_dotenv()
+user_config.configure(USERS_DB)
+user_config.initialize(load_host_paths())
+HOSTS[:] = list(user_config.all_hosts())
 
 REMOTE_REFRESH_SEC = max(5.0, float(os.getenv("GPU_MONITOR_REFRESH_SEC", "15")))
 REMOTE_BACKOFF_MAX_SEC = max(
@@ -285,6 +290,7 @@ def _with_local(servers: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 @asynccontextmanager
 async def _lifespan(_application: FastAPI):
+    await asyncio.to_thread(_write_host_paths_atomic, user_config.all_hosts())
     await _startup_probe_local()
     try:
         yield
@@ -315,6 +321,51 @@ async def require_admin(request: Request) -> None:
         if supplied and hmac.compare_digest(supplied, token):
             return
     raise HTTPException(status_code=403, detail="administrator access required")
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def _current_user(request: Request) -> dict[str, Any]:
+    user = user_config.user_for_ip(_client_ip(request))
+    if not user:
+        raise HTTPException(status_code=401, detail="select user")
+    return user
+
+
+def _can_delete_host(user: dict[str, Any], host: dict[str, Any] | None) -> bool:
+    return bool(host and (user["is_admin"] or (
+        host["visibility"] == "private"
+        and str(host["owner"]).casefold() == str(user["username"]).casefold()
+    )))
+
+
+class _LoginBody(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(default="", max_length=256)
+
+
+@app.get("/api/session")
+async def api_session(request: Request) -> dict[str, Any]:
+    user = await asyncio.to_thread(user_config.user_for_ip, _client_ip(request))
+    return {"ok": True, "user": user}
+
+
+@app.post("/api/session")
+async def api_select_user(body: _LoginBody, request: Request) -> dict[str, Any]:
+    username = body.username.strip()
+    if not re.fullmatch(r"[A-Za-zА-Яа-яЁё0-9_.-]+", username):
+        raise HTTPException(status_code=400, detail="invalid username")
+    is_admin = username.casefold() == "admin"
+    admin_password = os.getenv("GPU_MONITOR_ADMIN_PASSWORD", "0000")
+    if is_admin and not hmac.compare_digest(body.password, admin_password):
+        raise HTTPException(status_code=403, detail="неверный пароль администратора")
+    user = await asyncio.to_thread(
+        user_config.bind_user, _client_ip(request), "admin" if is_admin else username,
+        is_admin=is_admin,
+    )
+    return {"ok": True, "user": user}
 
 
 @app.middleware("http")
@@ -2170,35 +2221,44 @@ async def get_user_settings(
 
 
 @app.get("/api/metrics")
-async def metrics() -> dict[str, Any]:
+async def metrics(request: Request) -> dict[str, Any]:
     now = time.time()
     zt = list(_cache.get("zerotier") or [])
+    user = await asyncio.to_thread(user_config.user_for_ip, _client_ip(request))
+    if not user:
+        raise HTTPException(status_code=401, detail="select user")
+    visible = await asyncio.to_thread(user_config.visible_hosts, user["username"])
 
     # Build servers list from per-host cache
     servers: list[dict[str, Any]] = []
-    for h in HOSTS:
+    for access in visible:
+        h = access["hostname"]
         if h in _host_cache:
-            servers.append(_host_cache[h])
+            row = dict(_host_cache[h])
         else:
-            servers.append({
+            row = {
                 "host": h, "ok": False, "reachable": False,
                 "error": "загрузка…", "gpus": [], "ram": None,
                 "latency_ms": None, "paths": _host_cache_paths(h),
-            })
+            }
+        row["visibility"] = access["visibility"]
+        row["owner"] = access["owner"]
+        row["can_delete"] = _can_delete_host(user, access)
+        servers.append(row)
 
     if _host_cache:
         return {
             "updated_at": _cache["ts"],
             "cached": True,
             "servers": _with_local(servers),
-            "zerotier": zt,
+            "zerotier": zt, "user": user,
         }
 
     return {
         "updated_at": now,
         "cached": False,
         "servers": _with_local(servers),
-        "zerotier": zt,
+        "zerotier": zt, "user": user,
     }
 
 
@@ -2529,8 +2589,9 @@ def _parse_ssh_config() -> list[dict[str, str]]:
 
 
 @app.get("/api/ssh-hosts")
-async def api_ssh_hosts(_admin: None = Depends(require_admin)) -> dict[str, Any]:
+async def api_ssh_hosts(request: Request) -> dict[str, Any]:
     """Return SSH hosts from ~/.ssh/config, excluding already monitored hosts."""
+    _current_user(request)
     hosts = _parse_ssh_config()
     monitored = set(HOSTS)
     return {"hosts": [h for h in hosts if h["alias"] not in monitored]}
@@ -2556,8 +2617,9 @@ def _valid_ssh_target(value: str) -> bool:
 
 
 @app.post("/api/hosts")
-async def api_add_host(body: _AddHostBody, _admin: None = Depends(require_admin)) -> dict[str, Any]:
-    """Add a new host to host_paths.json and the in-memory HOSTS list."""
+async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
+    """Add a shared admin host or a private host owned by the current user."""
+    user = _current_user(request)
     if not re.match(r"^[a-zA-Z0-9_-]+$", body.hostname):
         return {"ok": False, "error": "hostname: letters, digits, _ and - only"}
     ssh_target = body.ssh_target or f"reedgern@{body.ip}"
@@ -2576,11 +2638,13 @@ async def api_add_host(body: _AddHostBody, _admin: None = Depends(require_admin)
     async with lock:
         if body.hostname in HOSTS:
             return {"ok": False, "error": f"host '{body.hostname}' already exists"}
-        existing = load_host_paths()
-        if body.hostname in existing:
-            return {"ok": False, "error": f"host '{body.hostname}' already in host_paths.json"}
-        existing[body.hostname] = [path_entry]
-        await asyncio.to_thread(_write_host_paths_atomic, existing)
+        if await asyncio.to_thread(user_config.get_host, body.hostname):
+            return {"ok": False, "error": f"host '{body.hostname}' already exists"}
+        await asyncio.to_thread(
+            user_config.add_host, body.hostname, user["username"], [path_entry],
+            shared=bool(user["is_admin"]),
+        )
+        await asyncio.to_thread(_write_host_paths_atomic, user_config.all_hosts())
         HOSTS.append(body.hostname)
         _host_generation[body.hostname] = _host_generation.get(body.hostname, 0) + 1
         _host_next_due[body.hostname] = 0.0
@@ -2600,22 +2664,28 @@ async def api_add_host(body: _AddHostBody, _admin: None = Depends(require_admin)
 
     _launch_host_probe(body.hostname, immediate=True)
 
-    return {"ok": True, "host": body.hostname, "paths": [path_entry]}
+    return {
+        "ok": True, "host": body.hostname, "paths": [path_entry],
+        "visibility": "shared" if user["is_admin"] else "private",
+        "owner": user["username"], "can_delete": True,
+    }
 
 
 @app.delete("/api/hosts/{hostname}")
-async def api_delete_host(hostname: str, _admin: None = Depends(require_admin)) -> dict[str, Any]:
-    """Remove a host from host_paths.json and the in-memory HOSTS list."""
+async def api_delete_host(hostname: str, request: Request) -> dict[str, Any]:
+    """Delete an owned private host, or any host when current user is admin."""
+    user = _current_user(request)
+    record = await asyncio.to_thread(user_config.get_host, hostname)
+    if not _can_delete_host(user, record):
+        raise HTTPException(status_code=403, detail="этот сервер нельзя удалить")
     if hostname not in HOSTS:
         return {"ok": False, "error": f"host '{hostname}' not found"}
     lock = _config_lock or asyncio.Lock()
     async with lock:
         if hostname not in HOSTS:
             return {"ok": False, "error": f"host '{hostname}' not found"}
-        existing = load_host_paths()
-        if hostname in existing:
-            del existing[hostname]
-            await asyncio.to_thread(_write_host_paths_atomic, existing)
+        await asyncio.to_thread(user_config.delete_host, hostname)
+        await asyncio.to_thread(_write_host_paths_atomic, user_config.all_hosts())
         HOSTS.remove(hostname)
         _host_generation[hostname] = _host_generation.get(hostname, 0) + 1
     task = _host_tasks.pop(hostname, None)

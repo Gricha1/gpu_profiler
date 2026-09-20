@@ -96,6 +96,7 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       grid-template-areas:
+        "quotas user"
         "quotas meta"
         "quotas sheet";
       align-items: start;
@@ -106,17 +107,20 @@
     .header-actions > .quotas-card { grid-area: quotas; }
     .header-actions > .meta       { grid-area: meta; justify-self: end; }
     .header-actions > .sheet-btn { grid-area: sheet; justify-self: end; }
+    .header-actions > .user-switch-btn { grid-area: user; justify-self: end; }
     @media (max-width: 980px) {
       .header-actions {
         grid-template-columns: 1fr;
         grid-template-areas:
           "quotas"
+          "user"
           "meta"
           "sheet";
         max-width: 100%;
       }
       .header-actions > .meta { justify-self: start; text-align: left; }
       .header-actions > .sheet-btn { justify-self: start; }
+      .header-actions > .user-switch-btn { justify-self: start; }
     }
     .sheet-btn {
       display: inline-flex;
@@ -1361,6 +1365,18 @@
       font-size: 0.78rem;
       cursor: pointer;
     }
+    .user-switch-btn {
+      border: 1px solid var(--line-strong); background: rgba(255,255,255,.05);
+      color: var(--ink); border-radius: 8px; padding: .45rem .7rem;
+      cursor: pointer; font: inherit; font-size: .78rem; justify-self: end;
+    }
+    .user-login-modal { max-width: 390px; height: auto; }
+    .user-login-fields { display: grid; gap: .75rem; padding: 1rem; }
+    .user-login-fields label { display: grid; gap: .35rem; color: var(--muted); font-size: .75rem; }
+    .user-login-fields input {
+      border: 1px solid var(--line-strong); background: #0a1017; color: var(--ink);
+      border-radius: 8px; padding: .65rem .7rem; font: inherit;
+    }
 
     @media (max-width: 640px) {
       header { align-items: start; flex-direction: column; }
@@ -1383,6 +1399,7 @@
       <div class="brand">GPU Fleet</div>
     </div>
     <div class="header-actions">
+      <button type="button" class="user-switch-btn" id="userSwitchBtn">Пользователь: —</button>
       <section class="quotas-card" id="quotasCard" aria-label="AI Coding Quotas" hidden>
         <div class="quotas-head">
           <div>
@@ -1423,6 +1440,22 @@
     </div>
   </header>
   <main id="grid"></main>
+
+  <div class="modal-backdrop" id="userModal" aria-hidden="true">
+    <div class="modal user-login-modal" role="dialog" aria-modal="true">
+      <div class="modal-head"><h2>Выбор пользователя</h2></div>
+      <div class="user-login-fields">
+        <label>Имя пользователя
+          <input id="userNameInput" type="text" maxlength="64" autocomplete="username" autofocus />
+        </label>
+        <label id="adminPasswordField" hidden>Пароль администратора
+          <input id="adminPasswordInput" type="password" autocomplete="current-password" />
+        </label>
+        <div id="userLoginError" style="color:var(--bad);font-size:.78rem;"></div>
+      </div>
+      <div class="modal-foot"><button type="button" id="userLoginSubmit">Войти</button></div>
+    </div>
+  </div>
 
   <div class="modal-backdrop" id="browseModal" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true">
@@ -1528,6 +1561,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=19"></script>
+  <script src="/static/app.js?v=20"></script>
 </body>
 </html>

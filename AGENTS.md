@@ -326,7 +326,7 @@ moved to an external coordinator.
 
 ### 5.5 Frontend update invariants
 
-- `static/app.js?v=19` permits only one in-flight metrics request and rejects
+- `static/app.js?v=20` permits only one in-flight metrics request and rejects
   responses that predate an ADD/DELETE mutation.
 - Known metrics are retained when an older backend returns a loading/error
   placeholder; the card becomes stale rather than empty.
@@ -341,6 +341,21 @@ moved to an external coordinator.
   The latest concrete per-host error is kept in browser localStorage, so a
   later polling placeholder cannot replace `connection timed out` with
   `loading`; polling itself continues normally in the background.
+
+### 5.6 Users and host visibility
+
+- `data/users.sqlite3` is the canonical store for users, IP bindings, host
+  ownership, visibility and SSH path JSON; it must not be committed.
+- The request client IP remembers the selected user. Any non-empty valid user
+  name is created without a password. The reserved `admin` user requires
+  `GPU_MONITOR_ADMIN_PASSWORD` (default `0000` for the requested local setup).
+- Core hosts are `aicenter<number>`, `aicenteritl` and `h200`. Core and shared
+  hosts are visible to everyone. Admin additions are shared; normal-user
+  additions are private to their owner.
+- Admin may delete any host. A normal user may delete only their own private
+  hosts. The backend enforces this rule; hiding the gear icon is only a UI aid.
+- `host_paths.json` is a runtime compatibility mirror of the SQLite inventory,
+  not the ownership authority.
 
 ---
 

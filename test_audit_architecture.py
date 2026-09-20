@@ -78,9 +78,14 @@ def test_delete_add_same_name_rejects_old_generation():
 async def test_metrics_requests_never_launch_remote_probe():
     app._host_cache.update({"a": result("a"), "b": result("b")})
     app._cache["ts"] = time.time() - 999
+    request = Request({"type": "http", "method": "GET", "path": "/api/metrics",
+                       "headers": [], "client": ("127.0.0.1", 1234)})
+    visible = [{"hostname": h, "owner": "tester", "visibility": "private"} for h in ("a", "b")]
     with patch("app._probe_host") as probe, patch("app.zerotier_networks", return_value=[]), \
-         patch("app._refresh_local", return_value=None):
-        replies = await asyncio.gather(*(app.metrics() for _ in range(8)))
+         patch("app._refresh_local", return_value=None), \
+         patch("app.user_config.user_for_ip", return_value={"username": "tester", "is_admin": False}), \
+         patch("app.user_config.visible_hosts", return_value=visible):
+        replies = await asyncio.gather(*(app.metrics(request) for _ in range(8)))
     assert all(len(reply["servers"]) >= 2 for reply in replies)
     probe.assert_not_called()
 
@@ -200,7 +205,10 @@ def test_host_config_write_is_atomic(tmp_path: Path):
 def test_real_fastapi_metrics_handler_is_cache_only():
     app._host_cache.update({"a": result("a"), "b": result("b")})
     app._cache["ts"] = time.time()
-    with patch("app._probe_host") as probe:
+    visible = [{"hostname": h, "owner": "tester", "visibility": "private"} for h in ("a", "b")]
+    with patch("app._probe_host") as probe, \
+         patch("app.user_config.user_for_ip", return_value={"username": "tester", "is_admin": False}), \
+         patch("app.user_config.visible_hosts", return_value=visible):
         response = TestClient(app.app).get("/api/metrics")
     assert response.status_code == 200
     assert {row["host"] for row in response.json()["servers"]} >= {"a", "b"}
@@ -211,6 +219,10 @@ def test_real_fastapi_add_handler_probes_only_new_host():
     launched: list[str] = []
     with patch("app.load_host_paths", return_value={}), \
          patch("app._write_host_paths_atomic"), \
+         patch("app.user_config.user_for_ip", return_value={"username": "tester", "is_admin": False}), \
+         patch("app.user_config.get_host", return_value=None), \
+         patch("app.user_config.add_host"), \
+         patch("app.user_config.all_hosts", return_value={}), \
          patch("app._launch_host_probe", side_effect=lambda host, **_kw: launched.append(host)):
         response = TestClient(app.app).post(
             "/api/hosts", json={"hostname": "new_host", "ip": "10.1.2.3", "port": 22}

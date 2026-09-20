@@ -36,6 +36,14 @@
     const netMode = document.getElementById("netMode");
     const ztBox = document.getElementById("ztBox");
     const ztRow = document.getElementById("ztRow");
+    const userModal = document.getElementById("userModal");
+    const userSwitchBtn = document.getElementById("userSwitchBtn");
+    const userNameInput = document.getElementById("userNameInput");
+    const adminPasswordField = document.getElementById("adminPasswordField");
+    const adminPasswordInput = document.getElementById("adminPasswordInput");
+    const userLoginSubmit = document.getElementById("userLoginSubmit");
+    const userLoginError = document.getElementById("userLoginError");
+    let currentUser = null;
     let firstPaint = true;
     let projectsByHost = {};
     const selectedByHost = {};
@@ -431,12 +439,12 @@
           <div class="host">${escapeHtml(title)}</div>
           <div style="display:flex;align-items:center;gap:0.5rem;">
             ${badge}
-            <div class="card-settings">
+            ${s.can_delete ? `<div class="card-settings">
               <button type="button" class="card-settings-btn" data-host="${escapeHtml(s.host)}" title="Опции">&#9881;</button>
               <div class="card-settings-menu" data-host="${escapeHtml(s.host)}">
                 <button type="button" class="card-settings-item danger" data-action="delete" data-host="${escapeHtml(s.host)}">&#10005; Удалить</button>
               </div>
-            </div>
+            </div>` : ""}
           </div>
         </div>
         ${body}
@@ -1262,6 +1270,7 @@
     }
 
     async function tick() {
+      if (!currentUser) return;
       if (_tickRunning) return;
       _tickRunning = true;
       const seq = ++_tickSeq;
@@ -1270,6 +1279,10 @@
       const timeout = setTimeout(() => ctrl.abort(), 12000);
       try {
         const res = await fetch("/api/metrics", { cache: "no-store", signal: ctrl.signal });
+        if (res.status === 401) {
+          openUserModal(true);
+          return;
+        }
         if (seq !== _tickSeq || mutationVersion !== _serverMutationVersion) return;
         const data = retainLastKnownMetrics(await res.json());
         if (seq !== _tickSeq || mutationVersion !== _serverMutationVersion) return;
@@ -1588,7 +1601,7 @@
 
     loadProjects();
     loadQuotas();
-    tick();
+    // Initial metrics load starts only after the IP-bound user is resolved.
     setInterval(tick, 5000);
 
     // -------- GPU Stats Chart --------
@@ -1871,6 +1884,73 @@
     const addMsg = document.getElementById("addMsg");
     const addSubmit = document.getElementById("addSubmit");
     const addRefreshPeers = document.getElementById("addRefreshPeers");
+
+    function openUserModal(required = false) {
+      userModal.classList.add("open");
+      userModal.setAttribute("aria-hidden", "false");
+      userModal.dataset.required = required ? "1" : "0";
+      userLoginError.textContent = "";
+      userNameInput.value = required ? "" : (currentUser?.username || "");
+      adminPasswordInput.value = "";
+      adminPasswordField.hidden = userNameInput.value.trim().toLowerCase() !== "admin";
+      setTimeout(() => userNameInput.focus(), 0);
+    }
+
+    function closeUserModal() {
+      if (userModal.dataset.required === "1") return;
+      userModal.classList.remove("open");
+      userModal.setAttribute("aria-hidden", "true");
+    }
+
+    async function loadSession() {
+      const res = await fetch("/api/session", { cache: "no-store" });
+      const data = await res.json();
+      if (!data.user) return openUserModal(true);
+      currentUser = data.user;
+      userSwitchBtn.textContent = `Пользователь: ${currentUser.username}`;
+      locallyAddedHosts.clear();
+      locallyDeletedHosts.clear();
+      persistLocalHostMutations();
+      window._lastMetricsData = null;
+      await tick();
+    }
+
+    userNameInput.addEventListener("input", () => {
+      adminPasswordField.hidden = userNameInput.value.trim().toLowerCase() !== "admin";
+    });
+    userSwitchBtn.addEventListener("click", () => openUserModal(false));
+    userModal.addEventListener("click", e => { if (e.target === userModal) closeUserModal(); });
+    userLoginSubmit.addEventListener("click", async () => {
+      const username = userNameInput.value.trim();
+      if (!username) return;
+      userLoginSubmit.disabled = true;
+      userLoginError.textContent = "";
+      try {
+        const res = await fetch("/api/session", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password: adminPasswordInput.value }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Ошибка входа");
+        currentUser = data.user;
+        userSwitchBtn.textContent = `Пользователь: ${currentUser.username}`;
+        userModal.dataset.required = "0";
+        closeUserModal();
+        locallyAddedHosts.clear();
+        locallyDeletedHosts.clear();
+        persistLocalHostMutations();
+        window._lastMetricsData = null;
+        await tick();
+      } catch (error) {
+        userLoginError.textContent = error.message || "Ошибка входа";
+      } finally {
+        userLoginSubmit.disabled = false;
+      }
+    });
+    [userNameInput, adminPasswordInput].forEach(input => input.addEventListener("keydown", e => {
+      if (e.key === "Enter") userLoginSubmit.click();
+    }));
+    loadSession().catch(() => openUserModal(true));
 
     function openAddServer() {
       addServerModal.classList.add("open");
