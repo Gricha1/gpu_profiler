@@ -290,25 +290,5 @@
       "ip": "192.168.194.193",
       "port": 22
     }
-  ],
-  "ml4": [
-    {
-      "id": "ssh-ml4",
-      "label": "SSH (gater.frccsc.ru)",
-      "kind": "ssh",
-      "ssh_target": "reedgern@gater.frccsc.ru",
-      "ip": "gater.frccsc.ru",
-      "port": 9191
-    }
-  ],
-  "ml3": [
-    {
-      "id": "ssh-ml3",
-      "label": "SSH (gater.frccsc.ru)",
-      "kind": "ssh",
-      "ssh_target": "reedgern@gater.frccsc.ru",
-      "ip": "gater.frccsc.ru",
-      "port": 9189
-    }
   ]
 }

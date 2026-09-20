@@ -435,6 +435,13 @@ Mesh Route Watcher работает вне backend как Windows Scheduled Task
 | Startup tasks утекали | Fire-and-forget create_task | Lifespan registry + cancel/gather |
 | Admin API был открыт | HTTP auth отсутствовал | Loopback trust + remote token |
 | ADD допускал опасный SSH target | Слабая input validation | Строгий pattern без shell/options |
+| Новая карточка иногда исчезала и возвращалась | Старый aggregate snapshot не содержал только что добавленный host | Mutation overlay до подтверждения backend |
+| Меню шестерёнки прыгало наверх страницы | Polling заменял/перемещал focused DOM-card | Stable keyed DOM, запрет замены открытой карточки, восстановление scroll |
+| `Connection timed out` заменялся на «загрузка…» | Placeholder имел тот же приоритет, что конкретная ошибка | Приоритет success → concrete error → loading и per-host error persistence |
+| Серверы разных пользователей смешивались | Единственный глобальный JSON inventory | SQLite ownership и server visibility `core/shared/private` |
+| Обычный пользователь мог удалить общий host | Удаление защищалось только общим admin guard | Backend ACL: owner удаляет private, admin удаляет любой |
+| Поле пароля admin было видно сразу | CSS `label { display:grid }` перебивал HTML `hidden` | `.user-login-fields [hidden] { display:none!important }` и отдельный второй шаг |
+| Чистое Linux-развёртывание падало при import | `sdk_agent.py` использовал незаявленный `cursor-sdk` | `cursor-sdk>=1.0.27` добавлен в `requirements.txt` |
 
 ---
 
@@ -451,7 +458,7 @@ python -m py_compile app.py host_paths.py remote_browse.py sdk_agent.py ssh_runt
 Результат последнего запуска:
 
 ```text
-26 passed
+29 passed
 JavaScript syntax: OK
 Python syntax: OK
 FastAPI lifespan smoke: HTTP 200
@@ -476,6 +483,11 @@ Background tasks after shutdown: 0
 14. remote viewer не может вызвать admin operation;
 15. persisted last-good переживает backend restart;
 16. frontend не заменяет известные метрики placeholder-ом.
+17. IP сохраняет выбранного пользователя;
+18. admin принимает только настроенный пароль;
+19. private host виден владельцу, shared/core видны всем;
+20. ACL удаления запрещает пользователю чужие и основные серверы;
+21. поле пароля скрыто на первом шаге независимо от CSS каскада.
 
 Локальный cache-path benchmark для 8 hosts и 100 конкурентных вызовов функции
 `/api/metrics`:
@@ -497,17 +509,21 @@ baseline до изменений не существовало, поэтому �
 ## 12. Изменённые компоненты
 
 - `app.py` — scheduler, host state, generations, persistence, lifecycle,
-  admin guard, cache-only metrics API.
+  admin guard, IP-bound sessions, visibility ACL, cache-only metrics API.
+- `user_config.py` — SQLite users, IP bindings, ownership и области
+  `core/shared/private`.
 - `ssh_runtime.py` — общий SSH limiter и telemetry.
 - `host_paths.py` — ограниченная и кэшируемая route diagnostics.
 - `remote_browse.py` — общий limiter, kill/wait при timeout/cancel.
 - `sdk_agent.py` — общий limiter для agent SSH tools.
 - `static/app.js` — serial polling, mutation guard, last-good retention,
-  keyed rendering.
-- `static/index.html` — `app.js?v=18`.
-- `test_audit_architecture.py`, `test_per_host_cache.py` — regression и
-  integration tests.
-- `.env.example` — scheduler, backoff, SSH limit и admin token.
+  keyed rendering, user switch и двухшаговый admin login.
+- `static/index.html` — `app.js?v=22`, user modal и строгий `[hidden]`.
+- `test_audit_architecture.py`, `test_per_host_cache.py`,
+  `test_user_config.py` — regression и integration tests.
+- `requirements.txt` — полный runtime dependency set, включая `cursor-sdk`.
+- `services/gpu-profiler-linux.service` — Linux user-service для deployment.
+- `.env.example` — scheduler, backoff, SSH limit, admin token/password.
 - `AGENTS.md` — обязательные архитектурные и safety invariants.
 - `AUDIT_REPORT.md` — компактный итог аудита.
 
@@ -516,24 +532,56 @@ baseline до изменений не существовало, поэтому �
 ## 13. Оставшиеся ограничения
 
 1. Поддерживается только один backend worker.
-2. Viewer/admin token не заменяет полноценную систему пользователей и ролей.
+2. IP binding удобен для локальной сети, но несколько людей за одним NAT/IP
+   разделят выбранного пользователя; это не полноценная web-аутентификация.
 3. Sync `ssh.exe`, уже запущенный через `asyncio.to_thread`, живёт до своего
    subprocess timeout даже после отмены asyncio task; late result безопасно
    отбрасывается поколением.
 4. После первого развёртывания на совершенно новой машине у сервера без
    единого успешного измерения объективно нет данных для отображения. После
    первого успеха пустая «загрузка…» больше не должна появляться.
-5. End-to-end network verification, Windows Scheduled Task, Amnezia/NetBird
-   и визуальный browser screenshot regression не входят в автоматические
-   тесты, чтобы не менять реальную инфраструктуру.
+5. Визуальный browser screenshot regression не входит в автоматические тесты.
 6. Текущий процесс на `0.0.0.0:8000`, обнаруженный во время диагностики, был
    запущен отдельно от канонического `scripts/start.ps1`. Статические файлы
-   `v16` он читает с диска сразу, но новая backend persistence активируется
+   `v22` он читает с диска сразу, но новая backend persistence активируется
    только после безопасного перезапуска этого конкретного deployment.
 
 ---
 
-## 14. Архив
+## 14. Развёртывание на `fic_comp` (20.09.2026)
+
+Хост: Ubuntu 24.04.4 LTS, SSH alias `fic_comp`, пользователь `gregory`.
+Приложение развёрнуто в `/home/gregory/gpu_profiler`, виртуальное окружение —
+`.venv`. User unit установлен как
+`~/.config/systemd/user/gpu-profiler.service`, включён и запущен на
+`0.0.0.0:8000`. Проверены:
+
+- systemd state `active`;
+- `GET /` — HTTP 200, title `GPU Fleet`;
+- `GET /api/session` — HTTP 200;
+- login тестового пользователя — HTTP 200;
+- `GET /api/metrics` после login — HTTP 200, 9 server entries;
+- доступ с Windows по ZeroTier — HTTP 200.
+
+Рабочая ссылка до завершения NetBird:
+
+```text
+http://192.168.194.193:8000/
+```
+
+NetBird запускался официальным Docker client с `host` networking,
+`/dev/net/tun` и capabilities `NET_ADMIN`, `SYS_ADMIN`, `SYS_RESOURCE`.
+Management URL существующей сети определён как `https://nettouse.ru:443`.
+Публичный cloud отвергал ключ, как и ожидалось для self-hosted key; при работе
+с правильным management URL HTTPS доступен, но gRPC/TLS handshake завершается
+`DeadlineExceeded`. Проверены client `0.79.0` и версия `0.76.2`, совпадающая с
+рабочим Windows peer. Незарегистрированные контейнер и volume удалены, setup
+key не сохранён. Для завершения нужен доступный gRPC endpoint/исправление
+policy на `nettouse.ru:443` либо новый подтверждённый setup key после этого.
+
+---
+
+## 15. Архив
 
 Актуальный архив исходников:
 
@@ -556,7 +604,7 @@ C:\Grisha\mipt\asp\NIR\gpu_monitor_audit.zip
 
 ---
 
-## 15. Быстрая проверка
+## 16. Быстрая проверка
 
 ```powershell
 cd C:\Grisha\mipt\asp\NIR\servers\gpu_monitor
