@@ -20,4 +20,4 @@ config.local.json
 *.local.json
 sing-box.exe
 **/sing-box.exe
-users.db
+data/

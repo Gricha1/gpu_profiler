@@ -5,7 +5,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path(__file__).resolve().parent / "users.db"
+DB_PATH = Path(__file__).resolve().parent / "data" / "users" / "users.db"
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _get_conn() -> sqlite3.Connection:

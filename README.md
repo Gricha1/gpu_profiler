@@ -78,3 +78,21 @@ Outside the repo (must stay outside): `~/.ssh/config`, `~/.ssh/timeweb-vpn/`.
 
 - **Architecture, topology, AI-agent rules:** [AGENTS.md](./AGENTS.md)
 - **Historical incident reports:** [docs/history/](./docs/history/)
+
+## Recent UI Fixes (2026-09-19)
+
+### GPU Stats Chart Modal
+- **Legend text color**: Fixed dark text on dark background by adding `color: "#cbd5e1"` and `fontColor: "#cbd5e1"` to legend items returned by `generateLabels` callback
+- **Global Chart.js defaults**: Set `Chart.defaults.color = "#cbd5e1"` for consistent light text across all chart elements
+- **Cache prevention**: Added `Cache-Control: no-cache, no-store, must-revalidate` headers to index.html response to prevent browser caching issues
+
+### Home Usage Dropdown
+- **Persistent selection**: Home usage user selection now persists across page refreshes via localStorage (`home_usage_${host}`)
+- **Dropdown stays open**: Modified `isProjectPickerBusy()` to also check for `.home-user-select` focus, preventing auto-refresh (every 5s) from closing the dropdown while user is selecting
+
+### Chart Layout
+- **Separate charts**: VRAM and GPU Utilization displayed in two separate charts (stacked vertically) instead of combined
+- **Fixed heights**: Each chart wrapped in `.chart-wrap` div with fixed 240px height to prevent canvas sizing issues
+- **Modal scrollbar**: Chart modal body has `overflow-y: auto` for scrolling when content exceeds viewport
+- **Legend styling**: Filled rectangles (not empty outlines) with soft pastel colors per GPU, `generateLabels` callback for custom rendering
+- **X-axis dates**: Time scale with day/hour display formats, auto-skipping ticks, max 14 ticks

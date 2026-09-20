@@ -19,7 +19,12 @@
       "ip": "10.43.71.7",
       "port": 22,
       "via": "cds2",
-      "ssh_opts": ["-o", "ProxyJump=cds2", "-o", "IdentitiesOnly=yes"],
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=cds2",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
       "protected": true
     },
     {
@@ -29,8 +34,16 @@
       "ssh_target": "reedgern@10.43.71.7",
       "ip": "10.43.71.7",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["10.43.71.7", 22]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "10.43.71.7",
+        22
+      ]
     },
     {
       "id": "zt_home",
@@ -39,8 +52,16 @@
       "ssh_target": "reedgern@192.168.194.7",
       "ip": "192.168.194.7",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["192.168.194.7", 22],
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "192.168.194.7",
+        22
+      ],
       "require_ssh": true
     },
     {
@@ -50,8 +71,16 @@
       "ssh_target": "reedgern@172.24.158.182",
       "ip": "172.24.158.182",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["172.24.158.182", 22],
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "172.24.158.182",
+        22
+      ],
       "zt_nwid": "0cccb752f7a913d8",
       "note": "Windows node must be authorized on this ZT network"
     },
@@ -62,8 +91,16 @@
       "ssh_target": "reedgern@192.168.50.18",
       "ip": "192.168.50.18",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["192.168.50.18", 22]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "192.168.50.18",
+        22
+      ]
     },
     {
       "id": "anydesk",
@@ -91,8 +128,16 @@
       "ssh_target": "gorbov_gv@100.98.208.203",
       "ip": "100.98.208.203",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["100.98.208.203", 22],
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "100.98.208.203",
+        22
+      ],
       "protected": true
     },
     {
@@ -102,8 +147,16 @@
       "ssh_target": "gorbov_gv@10.43.71.82",
       "ip": "10.43.71.82",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["10.43.71.82", 22]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "10.43.71.82",
+        22
+      ]
     },
     {
       "id": "lan_campus",
@@ -112,8 +165,16 @@
       "ssh_target": "gorbov_gv@10.55.229.159",
       "ip": "10.55.229.159",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["10.55.229.159", 22]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "10.55.229.159",
+        22
+      ]
     }
   ],
   "aicenter2": [
@@ -134,8 +195,16 @@
       "ssh_target": "gorbov_gv@100.98.59.202",
       "ip": "100.98.59.202",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["100.98.59.202", 22],
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "100.98.59.202",
+        22
+      ],
       "protected": true
     },
     {
@@ -145,8 +214,16 @@
       "ssh_target": "gorbov_gv@10.55.230.12",
       "ip": "10.55.230.12",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["10.55.230.12", 22]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "10.55.230.12",
+        22
+      ]
     }
   ],
   "aicenter3": [
@@ -167,8 +244,16 @@
       "ssh_target": "gorbov_gv@100.98.241.137",
       "ip": "100.98.241.137",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["100.98.241.137", 22],
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "100.98.241.137",
+        22
+      ],
       "protected": true
     },
     {
@@ -178,8 +263,16 @@
       "ssh_target": "gorbov_gv@10.55.228.129",
       "ip": "10.55.228.129",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["10.55.228.129", 22]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "10.55.228.129",
+        22
+      ]
     }
   ],
   "aicenteritl": [
@@ -200,8 +293,16 @@
       "ssh_target": "gorbov_gv@100.98.50.236",
       "ip": "100.98.50.236",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["100.98.50.236", 22],
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "100.98.50.236",
+        22
+      ],
       "protected": true
     },
     {
@@ -211,8 +312,16 @@
       "ssh_target": "gorbov_gv@10.43.71.124",
       "ip": "10.43.71.124",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["10.43.71.124", 22]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "10.43.71.124",
+        22
+      ]
     },
     {
       "id": "lan_campus",
@@ -221,8 +330,16 @@
       "ssh_target": "gorbov_gv@10.55.230.36",
       "ip": "10.55.230.36",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["10.55.230.36", 22]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "10.55.230.36",
+        22
+      ]
     },
     {
       "id": "public_old",
@@ -231,8 +348,16 @@
       "ssh_target": "gorbov_gv@93.175.29.227",
       "ip": "93.175.29.227",
       "port": 22,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes"],
-      "tcp": ["93.175.29.227", 22]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes"
+      ],
+      "tcp": [
+        "93.175.29.227",
+        22
+      ]
     }
   ],
   "h200": [
@@ -253,8 +378,18 @@
       "ssh_target": "gorbov_gv@10.0.116.11",
       "ip": "10.0.116.11",
       "port": 30101,
-      "ssh_opts": ["-o", "ProxyJump=none", "-o", "IdentitiesOnly=yes", "-p", "30101"],
-      "tcp": ["10.0.116.11", 30101]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-p",
+        "30101"
+      ],
+      "tcp": [
+        "10.0.116.11",
+        30101
+      ]
     }
   ],
   "ml3": [
@@ -275,8 +410,16 @@
       "ssh_target": "ggorbov@gater.frccsc.ru",
       "ip": "83.149.227.22",
       "port": 9189,
-      "ssh_opts": ["-o", "ProxyJump=none", "-p", "9189"],
-      "tcp": ["gater.frccsc.ru", 9189]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-p",
+        "9189"
+      ],
+      "tcp": [
+        "gater.frccsc.ru",
+        9189
+      ]
     }
   ],
   "ml4": [
@@ -297,8 +440,16 @@
       "ssh_target": "ggorbov@gater.frccsc.ru",
       "ip": "83.149.227.22",
       "port": 9191,
-      "ssh_opts": ["-o", "ProxyJump=none", "-p", "9191"],
-      "tcp": ["gater.frccsc.ru", 9191]
+      "ssh_opts": [
+        "-o",
+        "ProxyJump=none",
+        "-p",
+        "9191"
+      ],
+      "tcp": [
+        "gater.frccsc.ru",
+        9191
+      ]
     }
   ]
 }

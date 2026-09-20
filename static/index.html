@@ -10,6 +10,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script>Chart.defaults.color = "#cbd5e1";</script>
   <style>
     :root {
       --bg: #0b0f14;
@@ -102,7 +105,7 @@
     }
     .header-actions > .quotas-card { grid-area: quotas; }
     .header-actions > .meta       { grid-area: meta; justify-self: end; }
-    .header-actions > .sheet-btn   { grid-area: sheet; justify-self: end; }
+    .header-actions > .sheet-btn { grid-area: sheet; justify-self: end; }
     @media (max-width: 980px) {
       .header-actions {
         grid-template-columns: 1fr;
@@ -134,6 +137,129 @@
       transform: translateY(-1px);
       background: linear-gradient(180deg, rgba(94, 200, 192, 0.32), rgba(94, 200, 192, 0.16));
     }
+    .add-card {
+      background: linear-gradient(165deg, rgba(22, 30, 42, 0.92), rgba(14, 18, 26, 0.88));
+      border: 1px dashed rgba(94, 200, 192, 0.25);
+      box-shadow: var(--shadow);
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 180px;
+      cursor: pointer;
+      transition: border-color 220ms ease, transform 220ms ease, background 220ms ease;
+      animation: rise 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      gap: 0.6rem;
+    }
+    .add-card:hover {
+      border-color: rgba(94, 200, 192, 0.5);
+      transform: translateY(-2px);
+      background: linear-gradient(165deg, rgba(28, 38, 52, 0.95), rgba(16, 22, 32, 0.92));
+    }
+    .add-card-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 2px solid rgba(94, 200, 192, 0.35);
+      background: linear-gradient(180deg, rgba(94, 200, 192, 0.14), rgba(94, 200, 192, 0.05));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      color: var(--accent);
+      font-weight: 300;
+      line-height: 1;
+      transition: border-color 200ms ease, background 200ms ease;
+    }
+    .add-card:hover .add-card-icon {
+      border-color: rgba(94, 200, 192, 0.55);
+      background: linear-gradient(180deg, rgba(94, 200, 192, 0.22), rgba(94, 200, 192, 0.1));
+    }
+    .add-card-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .add-modal-body {
+      padding: 1rem 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .add-field label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .add-field select,
+    .add-field input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 0.5rem 0.65rem;
+      color: var(--ink);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.82rem;
+      outline: none;
+    }
+    .add-field select:focus,
+    .add-field input:focus {
+      border-color: var(--accent);
+    }
+    .add-field select option {
+      background: #1a2030;
+      color: var(--ink);
+    }
+    .add-peer-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+    .add-peer-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.3rem 0.55rem;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.75rem;
+      cursor: pointer;
+      background: transparent;
+      color: var(--ink);
+      transition: background 120ms, border-color 120ms;
+    }
+    .add-peer-chip:hover {
+      background: rgba(94, 200, 192, 0.08);
+      border-color: var(--accent);
+    }
+    .add-peer-chip.selected {
+      background: rgba(94, 200, 192, 0.18);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .add-peer-chip .chip-ip { color: var(--accent); }
+    .add-peer-chip .chip-name { color: var(--muted); font-size: 0.68rem; }
+    .add-row {
+      display: grid;
+      grid-template-columns: 1fr 100px;
+      gap: 0.75rem;
+    }
+    .add-msg {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.75rem;
+      min-height: 1rem;
+    }
+    .add-msg.ok { color: var(--ok); }
+    .add-msg.bad { color: var(--bad); }
     .vpn-card {
       min-width: 360px;
       max-width: 460px;
@@ -626,6 +752,11 @@
       font-size: 0.72rem;
       cursor: pointer;
       max-width: 280px;
+      color-scheme: dark;
+    }
+    .home-user-select option {
+      background: #161e2a;
+      color: var(--ink);
     }
     .home-user-select:hover {
       border-color: var(--line-strong);
@@ -939,6 +1070,93 @@
     }
     .modal-foot button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+    .gpu-stats-btn {
+      margin-top: 0.5rem;
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 0.35rem 0.5rem;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.7rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+    }
+    .gpu-stats-btn:hover {
+      border-color: var(--line-strong);
+      color: var(--ink);
+      background: rgba(255,255,255,0.06);
+    }
+
+    .chart-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 8, 12, 0.85);
+      backdrop-filter: blur(6px);
+      z-index: 60;
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 2rem 1rem;
+      overflow-y: auto;
+    }
+    .chart-modal.open { display: flex; }
+    .chart-container {
+      width: min(900px, 95vw);
+      height: min(900px, 90vh);
+      background: linear-gradient(165deg, #161e2a, #0e121a);
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.9rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .chart-head h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+    .chart-close {
+      border: 1px solid var(--line-strong);
+      background: transparent;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 0.35rem 0.6rem;
+      cursor: pointer;
+    }
+    .chart-body {
+      flex: 1;
+      padding: 1rem;
+      min-height: 250px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .chart-body canvas {
+      width: 100%;
+      height: 100%;
+    }
+    .chart-wrap {
+      width: 100%;
+      height: 240px;
+    }
+    .chart-empty {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
     .agent-dock {
       position: fixed;
       right: 1rem;
@@ -1101,7 +1319,6 @@
   <header>
     <div>
       <div class="brand">GPU Fleet</div>
-      <div class="sub">VRAM · utilization · RAM по серверам</div>
     </div>
     <div class="header-actions">
       <section class="quotas-card" id="quotasCard" aria-label="AI Coding Quotas" hidden>
@@ -1131,11 +1348,12 @@
       </section>
       <a
         class="sheet-btn"
-        href="https://docs.google.com/spreadsheets/d/1baFc689VyDzY6ypWmkuE6At0Jbp4YVKpLLFgjvgmokU/edit?gid=1200214015#gid=1200214015"
+        style="grid-area: sheet; justify-self: end;"
+        href="https://docs.google.com/spreadsheets/d/1baFc689VyDzY6ypWmkuE6At0Jbp4YVKpLLFgjvgmokU/edit?usp=sharing"
         target="_blank"
         rel="noopener noreferrer"
-        title="Загрузка кластера Cogmodel MIPT v1"
-      >Таблица кластера</a>
+        title="Таблица загрузки серверов"
+      >Таблица загрузки серверов</a>
       <div class="meta">
         <div>обновление: <strong id="updated">—</strong></div>
         <div>автоопрос каждые 5 с</div>
@@ -1174,6 +1392,64 @@
     </div>
     <div class="agent-dock-foot">
       <button type="button" class="secondary" id="agentDockIde">Open IDE</button>
+    </div>
+  </div>
+
+  <div class="chart-modal" id="chartModal" aria-hidden="true">
+    <div class="chart-container">
+      <div class="chart-head">
+        <h2 id="chartTitle">GPU History</h2>
+        <button type="button" class="chart-close" id="chartClose">Close</button>
+      </div>
+      <div class="chart-body">
+        <h3 style="color: var(--ink); font-size: 0.85rem; margin: 0 0 0.5rem 0;">VRAM Usage</h3>
+        <div class="chart-wrap"><canvas id="gpuVramChart"></canvas></div>
+        <h3 style="color: var(--ink); font-size: 0.85rem; margin: 1rem 0 0.5rem 0;">GPU Utilization</h3>
+        <div class="chart-wrap"><canvas id="gpuUtilChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="addServerModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" style="height: auto; max-height: min(80vh, 600px);">
+      <div class="modal-head">
+        <h2>Добавить сервер</h2>
+        <button type="button" class="modal-close" id="addServerClose">Close</button>
+      </div>
+      <div class="add-modal-body">
+        <div class="add-field">
+          <label for="addNetwork">Сеть</label>
+          <select id="addNetwork">
+            <option value="netbird">NetBird</option>
+            <option value="zerotier">ZeroTier</option>
+          </select>
+        </div>
+        <div class="add-field">
+          <label>Доступные узлы</label>
+          <div class="add-peer-list" id="addPeerList">
+            <span style="color: var(--muted); font-size: 0.78rem;">нажмите «Обновить» для загрузки списка</span>
+          </div>
+        </div>
+        <div class="add-row">
+          <div class="add-field">
+            <label for="addHostname">Имя хоста</label>
+            <input id="addHostname" type="text" placeholder="my_server" autocomplete="off" />
+          </div>
+          <div class="add-field">
+            <label for="addPort">Порт</label>
+            <input id="addPort" type="number" value="22" min="1" max="65535" />
+          </div>
+        </div>
+        <div class="add-field">
+          <label for="addIp">IP-адрес</label>
+          <input id="addIp" type="text" placeholder="100.x.x.x или 10.x.x.x" autocomplete="off" />
+        </div>
+        <div class="add-msg" id="addMsg"></div>
+      </div>
+      <div class="modal-foot" style="justify-content: space-between;">
+        <button type="button" id="addRefreshPeers" style="background: transparent; border-color: var(--line-strong); color: var(--muted);">Обновить</button>
+        <button type="button" id="addSubmit" disabled>Добавить</button>
+      </div>
     </div>
   </div>
 
@@ -1294,6 +1570,9 @@
       const username = selectEl.value;
       const detailsDiv = document.getElementById(`home-details-${host}`);
       if (!detailsDiv) return;
+      
+      // Save selection to localStorage
+      localStorage.setItem(`home_usage_${host}`, username);
       
       // Find the server data
       const servers = (window._lastMetricsData && window._lastMetricsData.servers) || [];
@@ -1500,20 +1779,23 @@
           }
 
           if (s.all_homes && s.all_homes.length) {
+            const savedSelection = localStorage.getItem(`home_usage_${s.host}`);
+            const defaultUsername = savedSelection && s.all_homes.some(h => h.username === savedSelection) 
+              ? savedSelection 
+              : s.all_homes[0].username;
+            const selectedHome = s.all_homes.find(h => h.username === defaultUsername) || s.all_homes[0];
+            const homePct = selectedHome.disk_pct != null ? selectedHome.disk_pct : 0;
+            
             body += `
               <div class="ram">
                 <div class="row-label">
                   <span>HOME USAGE</span>
                   <select class="home-user-select" data-host="${escapeHtml(s.host)}" onchange="updateHomeDisplay(this)">
-                    ${s.all_homes.map(h => `<option value="${escapeHtml(h.username)}">${escapeHtml(h.username)} — ${fmtGiB(h.used_bytes)}${h.disk_pct != null ? ` · ${h.disk_pct}%` : ""}</option>`).join("")}
+                    ${s.all_homes.map(h => `<option value="${escapeHtml(h.username)}"${h.username === defaultUsername ? " selected" : ""}>${escapeHtml(h.username)} — ${fmtGiB(h.used_bytes)}${h.disk_pct != null ? ` · ${h.disk_pct}%` : ""}</option>`).join("")}
                   </select>
                 </div>
                 <div class="home-details" id="home-details-${escapeHtml(s.host)}">
-                  ${(() => {
-                    const selected = s.all_homes[0];
-                    const homePct = selected.disk_pct != null ? selected.disk_pct : 0;
-                    return `<div class="row-label"><span title="${escapeHtml(selected.path || "")}">${fmtGiB(selected.used_bytes)}${selected.disk_pct != null ? ` · ${selected.disk_pct}% диска` : ""}</span></div>${bar(Math.min(homePct, 100), "home")}`;
-                  })()}
+                  <div class="row-label"><span title="${escapeHtml(selectedHome.path || "")}">${fmtGiB(selectedHome.used_bytes)}${selectedHome.disk_pct != null ? ` · ${selectedHome.disk_pct}% диска` : ""}</span></div>${bar(Math.min(homePct, 100), "home")}
                 </div>
               </div>`;
           } else if (s.home_disk) {
@@ -1585,7 +1867,9 @@
               </div>
               ${vramBlock}
             </div>`;
-          }).join("") + `</div>`;
+          }).join("") + `
+            <button type="button" class="gpu-stats-btn" data-host="${escapeHtml(s.host)}">GPU stats</button>
+          </div>`;
         }
       }
 
@@ -2160,7 +2444,7 @@
     function isProjectPickerBusy() {
       if (browseModal.classList.contains("open")) return true;
       const active = document.activeElement;
-      return !!(active && active.classList && active.classList.contains("proj-select"));
+      return !!(active && active.classList && (active.classList.contains("proj-select") || active.classList.contains("home-user-select")));
     }
 
     grid.addEventListener("change", (e) => {
@@ -2196,6 +2480,10 @@
       }
       const browseBtn = e.target.closest(".browse-btn");
       if (browseBtn) openBrowseModal(browseBtn.dataset.host);
+      const statsBtn = e.target.closest(".gpu-stats-btn");
+      if (statsBtn) {
+        showGpuStats(statsBtn.dataset.host);
+      }
     });
 
     async function tick() {
@@ -2211,8 +2499,22 @@
           updateOnlineBadges(data.servers || []);
           return;
         }
-        grid.innerHTML = (data.servers || []).filter(s => !s.local && s.host !== "local").map(renderServer).join("");
+        grid.innerHTML = (data.servers || []).filter(s => !s.local && s.host !== "local").map(renderServer).join("") +
+          `<div class="add-card" id="addServerCard" title="Добавить сервер">
+            <div class="add-card-icon">+</div>
+            <div class="add-card-label">Добавить сервер</div>
+          </div>`;
         restoreScrollPositions();
+        
+        // Restore home usage selections from localStorage
+        document.querySelectorAll('.home-user-select').forEach(select => {
+          const host = select.dataset.host;
+          const saved = localStorage.getItem(`home_usage_${host}`);
+          if (saved && Array.from(select.options).some(opt => opt.value === saved)) {
+            select.value = saved;
+          }
+        });
+        
         firstPaint = false;
       } catch (e) {
         updatedEl.textContent = "ошибка опроса";
@@ -2525,6 +2827,403 @@
     loadQuotas();
     tick();
     setInterval(tick, 5000);
+
+    // -------- GPU Stats Chart --------
+    let gpuVramChartInstance = null;
+    let gpuUtilChartInstance = null;
+    const chartModal = document.getElementById("chartModal");
+    const chartClose = document.getElementById("chartClose");
+    const chartTitle = document.getElementById("chartTitle");
+
+    async function showGpuStats(host) {
+      try {
+        const res = await fetch(`/api/gpu-history?host=${encodeURIComponent(host)}&hours=336`);
+        const data = await res.json();
+        if (!data.ok) {
+          alert("Error loading history: " + (data.error || "unknown"));
+          return;
+        }
+
+        const gpus = data.gpus || {};
+        const gpuIndices = Object.keys(gpus).map(k => parseInt(k, 10)).sort((a, b) => a - b);
+
+        chartTitle.textContent = `GPU Stats — ${host}`;
+        chartModal.classList.add("open");
+        chartModal.setAttribute("aria-hidden", "false");
+
+        // Destroy existing charts
+        if (gpuVramChartInstance) {
+          gpuVramChartInstance.destroy();
+          gpuVramChartInstance = null;
+        }
+        if (gpuUtilChartInstance) {
+          gpuUtilChartInstance.destroy();
+          gpuUtilChartInstance = null;
+        }
+
+        if (gpuIndices.length === 0) {
+          // Show empty charts
+          const vramCtx = document.getElementById("gpuVramChart").getContext("2d");
+          const utilCtx = document.getElementById("gpuUtilChart").getContext("2d");
+          gpuVramChartInstance = new Chart(vramCtx, {
+            type: "line",
+            data: { labels: [], datasets: [] },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  position: "top",
+                  labels: {
+                    color: "#cbd5e1",
+                    font: { color: "#cbd5e1" },
+                    usePointStyle: false,
+                    boxWidth: 20,
+                    boxHeight: 10,
+                    padding: 15
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  type: "time",
+                  time: { unit: "day", displayFormats: { day: "MMM dd", hour: "MMM dd HH:mm" } },
+                  ticks: { display: true, color: "#94a3b8", maxRotation: 45 },
+                  title: { display: true, text: "Date", color: "#cbd5e1" }
+                },
+                y: { type: "linear", beginAtZero: true, max: 100, title: { display: true, text: "Percentage %" } }
+              }
+            }
+          });
+          gpuUtilChartInstance = new Chart(utilCtx, {
+            type: "line",
+            data: { labels: [], datasets: [] },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  position: "top",
+                  labels: {
+                    color: "#cbd5e1",
+                    font: { color: "#cbd5e1" },
+                    usePointStyle: false,
+                    boxWidth: 20,
+                    boxHeight: 10,
+                    padding: 15
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  type: "time",
+                  time: { unit: "day", displayFormats: { day: "MMM dd", hour: "MMM dd HH:mm" } },
+                  ticks: { display: true, color: "#94a3b8", maxRotation: 45 },
+                  title: { display: true, text: "Date", color: "#cbd5e1" }
+                },
+                y: { type: "linear", beginAtZero: true, max: 100, title: { display: true, text: "Percentage %" } }
+              }
+            }
+          });
+          return;
+        }
+
+        // Collect all timestamps
+        const allTimestamps = new Set();
+        gpuIndices.forEach(idx => {
+          gpus[idx].forEach(h => allTimestamps.add(h.timestamp));
+        });
+        const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+        const labels = sortedTimestamps.map(ts => new Date(ts * 1000));
+
+        // Build datasets for each GPU
+        const vramDatasets = [];
+        const utilDatasets = [];
+        const colors = [
+          "rgb(96, 165, 250)",
+          "rgb(248, 113, 113)",
+          "rgb(52, 211, 153)",
+          "rgb(251, 191, 36)",
+          "rgb(192, 132, 252)",
+          "rgb(244, 114, 182)",
+          "rgb(45, 212, 191)",
+          "rgb(253, 186, 116)",
+        ];
+
+        gpuIndices.forEach((idx, i) => {
+          const color = colors[i % colors.length];
+          const gpuData = gpus[idx];
+          const timestampMap = new Map(gpuData.map(h => [h.timestamp, h]));
+
+          const vramData = sortedTimestamps.map(ts => {
+            const point = timestampMap.get(ts);
+            return point ? point.vram_pct : null;
+          });
+          const utilData = sortedTimestamps.map(ts => {
+            const point = timestampMap.get(ts);
+            return point ? point.util_pct : null;
+          });
+
+          vramDatasets.push({
+            label: `GPU ${idx}`,
+            data: vramData,
+            borderColor: color,
+            backgroundColor: color.replace("rgb", "rgba").replace(")", ", 0.1)"),
+            tension: 0.3,
+            pointRadius: 0,
+          });
+          utilDatasets.push({
+            label: `GPU ${idx}`,
+            data: utilData,
+            borderColor: color,
+            backgroundColor: color.replace("rgb", "rgba").replace(")", ", 0.1)"),
+            tension: 0.3,
+            pointRadius: 0,
+          });
+        });
+
+        const chartOptions = {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: "index",
+            intersect: false,
+          },
+          plugins: {
+            legend: {
+              display: true,
+              position: "top",
+              labels: {
+                color: "#cbd5e1",
+                font: { color: "#cbd5e1" },
+                usePointStyle: false,
+                boxWidth: 20,
+                boxHeight: 10,
+                padding: 15,
+                generateLabels: function(chart) {
+                  const datasets = chart.data.datasets;
+                  return datasets.map((dataset, i) => ({
+                    text: dataset.label,
+                    fillStyle: dataset.borderColor,
+                    strokeStyle: dataset.borderColor,
+                    lineWidth: 0,
+                    color: "#cbd5e1",
+                    fontColor: "#cbd5e1",
+                    hidden: !chart.isDatasetVisible(i),
+                    datasetIndex: i
+                  }));
+                }
+              }
+            },
+            tooltip: {
+              callbacks: {
+                title: function(context) {
+                  const date = new Date(context[0].parsed.x);
+                  return date.toLocaleString();
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: "time",
+              time: {
+                unit: "day",
+                displayFormats: {
+                  day: "MMM dd",
+                  hour: "MMM dd HH:mm"
+                }
+              },
+              ticks: {
+                display: true,
+                color: "#94a3b8",
+                maxRotation: 45,
+                autoSkip: true,
+                maxTicksLimit: 14
+              },
+              title: {
+                display: true,
+                text: "Date",
+                color: "#cbd5e1"
+              }
+            },
+            y: {
+              type: "linear",
+              beginAtZero: true,
+              max: 100,
+              title: {
+                display: true,
+                text: "Percentage %"
+              }
+            }
+          }
+        };
+
+        const vramCtx = document.getElementById("gpuVramChart").getContext("2d");
+        const utilCtx = document.getElementById("gpuUtilChart").getContext("2d");
+        
+        gpuVramChartInstance = new Chart(vramCtx, {
+          type: "line",
+          data: { labels: labels, datasets: vramDatasets },
+          options: chartOptions
+        });
+        
+        gpuUtilChartInstance = new Chart(utilCtx, {
+          type: "line",
+          data: { labels: labels, datasets: utilDatasets },
+          options: chartOptions
+        });
+      } catch (e) {
+        alert("Error loading GPU stats: " + (e.message || e));
+      }
+    }
+
+    function closeChartModal() {
+      chartModal.classList.remove("open");
+      chartModal.setAttribute("aria-hidden", "true");
+      if (gpuVramChartInstance) {
+        gpuVramChartInstance.destroy();
+        gpuVramChartInstance = null;
+      }
+      if (gpuUtilChartInstance) {
+        gpuUtilChartInstance.destroy();
+        gpuUtilChartInstance = null;
+      }
+    }
+
+    chartClose.addEventListener("click", closeChartModal);
+    chartModal.addEventListener("click", (e) => {
+      if (e.target === chartModal) closeChartModal();
+    });
+
+    // --- Add Server modal ---
+    const addServerModal = document.getElementById("addServerModal");
+    const addServerClose = document.getElementById("addServerClose");
+    const addNetwork = document.getElementById("addNetwork");
+    const addPeerList = document.getElementById("addPeerList");
+    const addHostname = document.getElementById("addHostname");
+    const addPort = document.getElementById("addPort");
+    const addIp = document.getElementById("addIp");
+    const addMsg = document.getElementById("addMsg");
+    const addSubmit = document.getElementById("addSubmit");
+    const addRefreshPeers = document.getElementById("addRefreshPeers");
+    let peersData = { netbird: [], zerotier: [] };
+
+    function openAddServer() {
+      addServerModal.classList.add("open");
+      addServerModal.setAttribute("aria-hidden", "false");
+      addMsg.textContent = "";
+      addMsg.className = "add-msg";
+      loadPeers();
+    }
+
+    function closeAddServer() {
+      addServerModal.classList.remove("open");
+      addServerModal.setAttribute("aria-hidden", "true");
+    }
+
+    function validateAddForm() {
+      const hostname = addHostname.value.trim();
+      const ip = addIp.value.trim();
+      const port = parseInt(addPort.value, 10);
+      const valid = hostname && /^[a-zA-Z0-9_-]+$/.test(hostname) &&
+                    /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip) &&
+                    port >= 1 && port <= 65535;
+      addSubmit.disabled = !valid;
+    }
+
+    async function loadPeers() {
+      addPeerList.innerHTML = '<span style="color: var(--muted); font-size: 0.78rem;">загрузка…</span>';
+      try {
+        const res = await fetch("/api/network/peers");
+        const data = await res.json();
+        peersData = {
+          netbird: (data.netbird && data.netbird.peers) || [],
+          zerotier: (data.zerotier && data.zerotier.peers) || [],
+        };
+        renderPeers();
+      } catch (e) {
+        addPeerList.innerHTML = '<span style="color: var(--bad); font-size: 0.78rem;">ошибка загрузки</span>';
+      }
+    }
+
+    function renderPeers() {
+      const net = addNetwork.value;
+      const peers = peersData[net] || [];
+      if (!peers.length) {
+        const errMsg = net === "netbird"
+          ? (peersData.netbird.error || "узлы не найдены")
+          : (peersData.zerotier.error || "узлы не найдены");
+        addPeerList.innerHTML = `<span style="color: var(--muted); font-size: 0.78rem;">${errMsg}</span>`;
+        return;
+      }
+      addPeerList.innerHTML = "";
+      peers.forEach((p) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "add-peer-chip";
+        chip.innerHTML = `<span class="chip-ip">${p.ip}</span> <span class="chip-name">${p.name || ""}</span>`;
+        chip.addEventListener("click", () => {
+          addIp.value = p.ip;
+          addPeerList.querySelectorAll(".add-peer-chip").forEach((c) => c.classList.remove("selected"));
+          chip.classList.add("selected");
+          if (!addHostname.value.trim()) {
+            addHostname.value = p.name || "";
+          }
+          validateAddForm();
+        });
+        addPeerList.appendChild(chip);
+      });
+    }
+
+    grid.addEventListener("click", (e) => {
+      const card = e.target.closest("#addServerCard");
+      if (card) openAddServer();
+    });
+    addServerClose.addEventListener("click", closeAddServer);
+    addServerModal.addEventListener("click", (e) => {
+      if (e.target === addServerModal) closeAddServer();
+    });
+    addNetwork.addEventListener("change", renderPeers);
+    addRefreshPeers.addEventListener("click", loadPeers);
+    addHostname.addEventListener("input", validateAddForm);
+    addIp.addEventListener("input", validateAddForm);
+    addPort.addEventListener("input", validateAddForm);
+
+    addSubmit.addEventListener("click", async () => {
+      const body = {
+        hostname: addHostname.value.trim(),
+        network: addNetwork.value,
+        ip: addIp.value.trim(),
+        port: parseInt(addPort.value, 10),
+      };
+      addMsg.textContent = "добавление…";
+      addMsg.className = "add-msg";
+      try {
+        const res = await fetch("/api/hosts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          addMsg.textContent = `сервер «${body.hostname}» добавлен`;
+          addMsg.className = "add-msg ok";
+          addHostname.value = "";
+          addIp.value = "";
+          addSubmit.disabled = true;
+          setTimeout(() => { closeAddServer(); tick(); }, 800);
+        } else {
+          addMsg.textContent = data.error || "ошибка";
+          addMsg.className = "add-msg bad";
+        }
+      } catch (e) {
+        addMsg.textContent = "ошибка сети";
+        addMsg.className = "add-msg bad";
+      }
+    });
 
     // User tracking
     (function initTracking() {

@@ -43,6 +43,7 @@ from services.mesh_watcher_status import get_watcher_status, start_mesh_watcher
 from services.public_ip import get_public_ip_status
 from services.quotas import aggregator as quotas_aggregator
 import user_tracking
+import gpu_metrics_history
 
 HOSTS = [
     "lab_comp",
@@ -135,6 +136,14 @@ _local_refreshing = False
 LOCAL_REFRESH_SEC = 2.0
 
 
+def _current_metrics() -> dict[str, Any]:
+    """Return current cached metrics data."""
+    return {
+        "updated_at": _cache["ts"],
+        "servers": _with_local(_cache["servers"]),
+    }
+
+
 def _placeholder_servers() -> list[dict[str, Any]]:
     path_cfg = load_host_paths()
     out: list[dict[str, Any]] = []
@@ -202,7 +211,7 @@ async def _no_cache_html(request, call_next):
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -1724,8 +1733,31 @@ async def _startup_probe_local() -> None:
     # Fire-and-forget first quota refresh so the UI shows real numbers
     # on first paint rather than placeholders.
     asyncio.create_task(asyncio.to_thread(quotas_aggregator.refresh_now))
+    # Start GPU metrics history collection (every 5 minutes).
+    asyncio.create_task(_metrics_hist_collector())
     # Do NOT auto-rewrite routes on startup. Overlay breakage is usually Amnezia
     # kill-switch WFP (WSAEACCES), not missing routes — see mesh health API.
+
+
+async def _metrics_hist_collector() -> None:
+    """Collect GPU metrics every 5 minutes for historical tracking."""
+    import asyncio
+    while True:
+        try:
+            # Collect metrics directly
+            servers = await asyncio.wait_for(_collect(), timeout=150)
+            for s in servers:
+                if not s.get("ok") or not s.get("gpus"):
+                    continue
+                host = s.get("host", "")
+                gpus = s.get("gpus", [])
+                if gpus:
+                    await asyncio.to_thread(gpu_metrics_history.record_batch, host, gpus)
+            # Cleanup old records (older than 2 weeks)
+            await asyncio.to_thread(gpu_metrics_history.cleanup_old)
+        except Exception:
+            pass
+        await asyncio.sleep(300)  # 5 minutes
 
 
 @app.post("/api/protect-routes")
@@ -1900,6 +1932,20 @@ async def projects() -> dict[str, Any]:
     servers = await asyncio.to_thread(discover_projects, HOSTS)
     servers["local"] = await asyncio.to_thread(discover_local_projects)
     return {"servers": servers}
+
+
+@app.get("/api/gpu-history")
+async def gpu_history(host: str, gpu_index: int = None, hours: int = 336) -> dict[str, Any]:
+    """Fetch GPU metrics history. If gpu_index is None, returns all GPUs for the host."""
+    if host not in HOSTS:
+        return {"ok": False, "error": f"unknown host: {host}"}
+    if gpu_index is None:
+        # Return all GPUs
+        data = await asyncio.to_thread(gpu_metrics_history.get_all_history, host, hours)
+        return {"ok": True, "host": host, "gpus": data}
+    else:
+        data = await asyncio.to_thread(gpu_metrics_history.get_history, host, gpu_index, hours)
+        return {"ok": True, "host": host, "gpu_index": gpu_index, "history": data}
 
 
 @app.get("/api/vpn/status")
@@ -2161,6 +2207,146 @@ async def agent_unlock(body: OpenCursorBody) -> dict[str, Any]:
         return {"ok": False, "error": f"unknown host: {body.host}"}
     ok = await sdk_agent.force_unlock(body.host, body.path)
     return {"ok": ok}
+
+
+@app.get("/api/network/peers")
+async def api_network_peers() -> dict[str, Any]:
+    """Discover available peers from ZeroTier and NetBird networks."""
+    return await asyncio.to_thread(_discover_network_peers)
+
+
+class _AddHostBody(BaseModel):
+    hostname: str = Field(min_length=1, max_length=64)
+    network: str = Field(pattern="^(netbird|zerotier)$")
+    ip: str = Field(min_length=7, max_length=15)
+    port: int = Field(default=22, ge=1, le=65535)
+    ssh_target: str | None = None
+
+
+@app.post("/api/hosts")
+async def api_add_host(body: _AddHostBody) -> dict[str, Any]:
+    """Add a new host to host_paths.json and the in-memory HOSTS list."""
+    if not re.match(r"^[a-zA-Z0-9_-]+$", body.hostname):
+        return {"ok": False, "error": "hostname: letters, digits, _ and - only"}
+    if not re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", body.ip):
+        return {"ok": False, "error": "ip: must be IPv4"}
+    if body.hostname in HOSTS:
+        return {"ok": False, "error": f"host '{body.hostname}' already exists"}
+
+    existing = load_host_paths()
+    if body.hostname in existing:
+        return {"ok": False, "error": f"host '{body.hostname}' already in host_paths.json"}
+
+    ssh_target = body.ssh_target or f"reedgern@{body.ip}"
+    path_entry: dict[str, Any] = {
+        "id": body.network,
+        "label": f"{body.network} ({body.ip})",
+        "kind": "ssh",
+        "ssh_target": ssh_target,
+        "ip": body.ip,
+        "port": body.port,
+    }
+
+    existing[body.hostname] = [path_entry]
+    paths_file = Path(__file__).resolve().parent / "host_paths.json"
+    paths_file.write_text(
+        json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    HOSTS.append(body.hostname)
+
+    return {"ok": True, "host": body.hostname, "paths": [path_entry]}
+
+
+def _discover_network_peers() -> dict[str, Any]:
+    """Discover available peers from ZeroTier and NetBird."""
+    zt_cli = Path(r"C:\Program Files (x86)\ZeroTier\One\zerotier-cli.bat")
+    result: dict[str, Any] = {
+        "netbird": {"peers": [], "error": None},
+        "zerotier": {"peers": [], "error": None},
+    }
+
+    # --- ZeroTier ---
+    if zt_cli.is_file():
+        try:
+            out = subprocess.run(
+                [str(zt_cli), "listnetworks"],
+                capture_output=True, text=True, timeout=5,
+                encoding="utf-8", errors="replace",
+            )
+            for ln in out.stdout.splitlines():
+                if "<nwid>" in ln or not ln.startswith("200 listnetworks "):
+                    continue
+                parts = ln.split()
+                if len(parts) < 8:
+                    continue
+                ips = parts[-1]
+                if ips and ips != "-":
+                    ip = ips.split("/")[0]
+                    if re.match(r"^\d+\.\d+\.\d+\.\d+$", ip):
+                        result["zerotier"]["peers"].append(
+                            {"ip": ip, "name": f"zt-{ip.split('.')[-1]}"}
+                        )
+        except Exception as exc:
+            result["zerotier"]["error"] = str(exc)
+
+        try:
+            out = subprocess.run(
+                [str(zt_cli), "listpeers"],
+                capture_output=True, text=True, timeout=5,
+                encoding="utf-8", errors="replace",
+            )
+            seen = {p["ip"] for p in result["zerotier"]["peers"]}
+            for ln in out.stdout.splitlines():
+                if "200 listpeers" not in ln or "<id>" in ln:
+                    continue
+                parts = ln.split()
+                if len(parts) < 6:
+                    continue
+                ip = parts[-1]
+                if re.match(r"^\d+\.\d+\.\d+\.\d+$", ip) and ip not in seen:
+                    seen.add(ip)
+                    result["zerotier"]["peers"].append(
+                        {"ip": ip, "name": f"zt-peer-{ip.split('.')[-1]}"}
+                    )
+        except Exception as exc:
+            result["zerotier"]["error"] = (result["zerotier"].get("error") or "") + str(exc)
+    else:
+        result["zerotier"]["error"] = "zerotier-cli not found"
+
+    # --- NetBird ---
+    nb_cli = Path(r"C:\Program Files\NetBird\netbird.exe")
+    if nb_cli.is_file():
+        try:
+            out = subprocess.run(
+                [str(nb_cli), "status"],
+                capture_output=True, text=True, timeout=5,
+                encoding="utf-8", errors="replace",
+            )
+            for ln in out.stdout.splitlines():
+                m = re.search(r"(\d+\.\d+\.\d+\.\d+)", ln)
+                if m and ("Peers" in ln or "Connected" in ln or "peer" in ln.lower()):
+                    ip = m.group(1)
+                    if ip.startswith("100."):
+                        result["netbird"]["peers"].append(
+                            {"ip": ip, "name": f"nb-{ip.split('.')[-1]}"}
+                        )
+        except Exception as exc:
+            result["netbird"]["error"] = str(exc)
+    else:
+        result["netbird"]["error"] = "netbird CLI not found"
+
+    # Deduplicate by IP within each network
+    for net_key in ("netbird", "zerotier"):
+        seen = set()
+        deduped = []
+        for p in result[net_key]["peers"]:
+            if p["ip"] not in seen:
+                seen.add(p["ip"])
+                deduped.append(p)
+        result[net_key]["peers"] = deduped
+
+    return result
 
 
 @app.on_event("shutdown")
