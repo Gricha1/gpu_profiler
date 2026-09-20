@@ -4,8 +4,8 @@
 > this project. Every Cursor / Codex / other AI-coding agent working here must
 > read this first and treat anything that contradicts it as wrong.
 >
-> `servers_profiler.md` contains the consolidated change history and audit
-> report. `README.md` is the user-facing installation and operations guide.
+> `README.md` is the user-facing installation guide. Personal operational
+> notes belong in the gitignored local `servers_profiler.md`.
 
 ---
 
@@ -830,4 +830,5 @@ watcher behaviour, or operational invariants change.
 
 If you need to add a *new* doc that is not user-facing release notes, ask
 first — duplicated architecture prose caused contradictory documentation in
-the past. Append operational history to `servers_profiler.md` instead.
+the past. Personal operational history may be kept in gitignored
+`servers_profiler.md`.

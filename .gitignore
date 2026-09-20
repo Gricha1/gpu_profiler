@@ -28,3 +28,4 @@ host_paths.json
 projects.json
 protected_nets.json
 config/local/
+servers_profiler.md

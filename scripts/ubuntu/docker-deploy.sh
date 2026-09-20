@@ -5,6 +5,7 @@ ROOT="${HOME}/gpu_profiler"
 IMAGE="gpu-profiler:local"
 CONTAINER="gpu-profiler"
 DEBUG_CONTAINER="gpu-profiler-debug"
+DOCKER_SOCKET="/var/run/docker.sock"
 
 cd "${ROOT}"
 mkdir -p data logs runtime config/local
@@ -52,9 +53,13 @@ docker run --detach \
   --name "${DEBUG_CONTAINER}" \
   --restart unless-stopped \
   --network host \
+  --user 0:0 \
   --health-cmd "curl --fail --silent http://127.0.0.1:8001/ >/dev/null || exit 1" \
   "${env_args[@]}" \
   --volume "${ROOT}/data:/app/data" \
+  --volume "${ROOT}:/host-repo" \
+  --volume "${DOCKER_SOCKET}:${DOCKER_SOCKET}" \
+  --volume "/usr/bin/docker:/usr/bin/docker:ro" \
   "${IMAGE}" \
   python -m uvicorn debug_app:app --host 0.0.0.0 --port 8001 --workers 1
 
