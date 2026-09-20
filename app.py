@@ -34,6 +34,7 @@ from local_probe import probe_local
 from remote_browse import fs_list, fs_repos, fs_roots
 import sdk_agent
 from host_paths import (
+    PATHS_FILE,
     apply_protected_routes,
     best_ssh_target,
     cached_host_paths,
@@ -2631,7 +2632,8 @@ class _RenameHostBody(BaseModel):
 
 
 def _write_host_paths_atomic(data: dict[str, Any]) -> None:
-    paths_file = ROOT / "host_paths.json"
+    paths_file = PATHS_FILE
+    paths_file.parent.mkdir(parents=True, exist_ok=True)
     temporary = paths_file.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     temporary.replace(paths_file)

@@ -666,3 +666,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\stop.ps1
 Интерфейс и API статистики доступны только после входа `admin` с паролем
 `GPU_MONITOR_ADMIN_PASSWORD`. Основной контейнер остаётся на порту `8000`;
 оба порта доступны по IP сервера без выдачи SSH-доступа.
+
+---
+
+## 19. Локальная конфигурация серверов (20.09.2026)
+
+Реальные `host_paths.json`, `projects.json` и `protected_nets.json` удалены из
+Git. Каждый deployment хранит их в gitignored `config/local/`, который
+монтируется в контейнер как `/app/config-local`. Новый deployment начинается с
+пустых примеров и не выполняет SSH-запросы к чужой инфраструктуре. SQLite с
+пользовательскими серверами также остаётся в локальном `data/`.

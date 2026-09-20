@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent
-PROJECTS_FILE = ROOT / "projects.json"
+PROJECTS_FILE = Path(os.getenv("GPU_MONITOR_CONFIG_DIR", str(ROOT))) / "projects.json"
 
 _STORAGE_CANDIDATES = [
     Path(os.environ.get("APPDATA", "")) / "Cursor" / "User" / "globalStorage" / "storage.json",

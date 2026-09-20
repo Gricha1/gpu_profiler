@@ -12,10 +12,13 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      GPU_MONITOR_CONFIG_DIR: /app/config-local
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
       - ./runtime:/app/runtime
+      - ./config/local:/app/config-local
       - ${HOME}/.ssh:/home/app/.ssh:ro
   gpu-profiler-debug:
     build:

@@ -202,7 +202,7 @@ def test_ssh_diagnostics_contains_required_counters():
 
 def test_host_config_write_is_atomic(tmp_path: Path):
     target = tmp_path / "host_paths.json"
-    with patch.object(app, "ROOT", tmp_path):
+    with patch.object(app, "PATHS_FILE", target):
         app._write_host_paths_atomic({"safe": [{"ssh_target": "safe"}]})
     assert json.loads(target.read_text(encoding="utf-8"))["safe"][0]["ssh_target"] == "safe"
     assert not target.with_suffix(".json.tmp").exists()

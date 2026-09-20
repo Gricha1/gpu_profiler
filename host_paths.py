@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import time
@@ -13,8 +14,9 @@ from typing import Any
 import ssh_runtime
 
 ROOT = Path(__file__).resolve().parent
-PATHS_FILE = ROOT / "host_paths.json"
-PROTECTED_FILE = ROOT / "protected_nets.json"
+CONFIG_DIR = Path(os.getenv("GPU_MONITOR_CONFIG_DIR", str(ROOT)))
+PATHS_FILE = CONFIG_DIR / "host_paths.json"
+PROTECTED_FILE = CONFIG_DIR / "protected_nets.json"
 ZT_CLI = Path(r"C:\Program Files (x86)\ZeroTier\One\zerotier-cli.bat")
 PROTECT_SCRIPT = ROOT / "protect_routes.ps1"
 

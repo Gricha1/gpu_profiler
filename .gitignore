@@ -24,3 +24,7 @@ data/
 users.db
 runtime/shot/
 launchers/*.exe
+host_paths.json
+projects.json
+protected_nets.json
+config/local/

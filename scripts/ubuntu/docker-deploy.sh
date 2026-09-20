@@ -7,7 +7,16 @@ CONTAINER="gpu-profiler"
 DEBUG_CONTAINER="gpu-profiler-debug"
 
 cd "${ROOT}"
-mkdir -p data logs runtime
+mkdir -p data logs runtime config/local
+for name in host_paths projects protected_nets; do
+  if [[ ! -f "config/local/${name}.json" ]]; then
+    if [[ -f "${name}.json" ]]; then
+      cp "${name}.json" "config/local/${name}.json"
+    else
+      cp "config/examples/${name}.example.json" "config/local/${name}.json"
+    fi
+  fi
+done
 
 docker build \
   --build-arg "APP_UID=$(id -u)" \
@@ -30,10 +39,12 @@ docker run --detach \
   --name "${CONTAINER}" \
   --restart unless-stopped \
   --network host \
+  --env GPU_MONITOR_CONFIG_DIR=/app/config-local \
   "${env_args[@]}" \
   --volume "${ROOT}/data:/app/data" \
   --volume "${ROOT}/logs:/app/logs" \
   --volume "${ROOT}/runtime:/app/runtime" \
+  --volume "${ROOT}/config/local:/app/config-local" \
   --volume "${HOME}/.ssh:/home/app/.ssh:ro" \
   "${IMAGE}"
 

@@ -25,4 +25,6 @@ bash scripts/ubuntu/docker-deploy.sh
 ```
 
 Данные сохраняются в `data/`. Оба контейнера используют restart policy
-`unless-stopped`. Подробности архитектуры: [servers_profiler.md](./servers_profiler.md).
+`unless-stopped`. Серверы и SSH-адреса хранятся только локально в
+`config/local/` и не попадают в Git. Подробности архитектуры:
+[servers_profiler.md](./servers_profiler.md).
