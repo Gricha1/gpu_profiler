@@ -2226,7 +2226,3 @@
           confirmBtn.textContent = "Удалить";
         });
     });
-
-    window.addEventListener("pagehide", () => {
-      navigator.sendBeacon("/api/session/leave");
-    });

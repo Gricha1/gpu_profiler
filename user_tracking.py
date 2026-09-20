@@ -22,6 +22,7 @@ def init_db():
         """)
 
 def _expire(db, now):
+    db.execute("UPDATE usage_sessions SET ended_at=last_seen,end_reason='internal' WHERE ended_at IS NULL AND client_ip IN ('127.0.0.1','::1')")
     db.execute("UPDATE usage_sessions SET ended_at=last_seen,end_reason='timeout' WHERE ended_at IS NULL AND last_seen<?", (now-IDLE_TIMEOUT_SEC,))
 
 def touch(username, client_ip, force_new=False):

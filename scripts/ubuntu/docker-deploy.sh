@@ -48,7 +48,7 @@ docker run --detach \
   python -m uvicorn debug_app:app --host 0.0.0.0 --port 8001 --workers 1
 
 for _ in {1..30}; do
-  if curl --fail --silent --max-time 3 http://127.0.0.1:8000/ >/dev/null \
+  if curl --fail --silent --max-time 3 http://127.0.0.1:8000/health >/dev/null \
     && curl --fail --silent --max-time 3 http://127.0.0.1:8001/ >/dev/null; then
     echo "GPU Profiler: http://$(hostname -I | awk '{print $1}'):8000/"
     echo "Analytics: http://$(hostname -I | awk '{print $1}'):8001/"

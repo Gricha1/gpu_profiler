@@ -372,15 +372,22 @@ async def api_select_user(body: _LoginBody, request: Request) -> dict[str, Any]:
 @app.middleware("http")
 async def _no_cache_html(request, call_next):
     response = await call_next(request)
-    user = await asyncio.to_thread(user_config.user_for_ip, _client_ip(request))
-    if user:
-        await asyncio.to_thread(user_tracking.touch, user["username"], _client_ip(request))
+    client_ip = _client_ip(request)
+    if request.url.path != "/health" and client_ip not in {"127.0.0.1", "::1"}:
+        user = await asyncio.to_thread(user_config.user_for_ip, client_ip)
+        if user:
+            await asyncio.to_thread(user_tracking.touch, user["username"], client_ip)
     path = request.url.path
     if path == "/" or path.endswith(".html"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     return response
+
+
+@app.get("/health", include_in_schema=False)
+async def health() -> dict[str, bool]:
+    return {"ok": True}
 
 
 @app.post("/api/session/leave")

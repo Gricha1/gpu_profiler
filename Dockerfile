@@ -22,6 +22,6 @@ RUN mkdir -p data logs runtime && chown -R app:app /app
 USER app
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=4 \
-    CMD curl --fail --silent http://127.0.0.1:8000/ >/dev/null || exit 1
+    CMD curl --fail --silent http://127.0.0.1:8000/health >/dev/null || exit 1
 
 CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
