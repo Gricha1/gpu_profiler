@@ -21,3 +21,6 @@ config.local.json
 sing-box.exe
 **/sing-box.exe
 data/
+users.db
+runtime/shot/
+launchers/*.exe

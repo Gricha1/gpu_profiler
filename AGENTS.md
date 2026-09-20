@@ -4,16 +4,15 @@
 > this project. Every Cursor / Codex / other AI-coding agent working here must
 > read this first and treat anything that contradicts it as wrong.
 >
-> Historical context lives in `docs/history/`. The retired status files
-> `MESH_VK_REPORT.md`, `MIGRATION_REPORT.md`, `TEST_REPORT.md` were moved there
-> on consolidation. The retired `CURRENT_ARCHITECTURE.md` is now a one-line
-> redirect to this file. `README.md` is a short user-facing pointer.
+> `servers_profiler.md` contains the consolidated change history and audit
+> report. `README.md` is the user-facing installation and operations guide.
 
 ---
 
 ## 1. Purpose
 
-GPU Profiler is a single-user Windows dashboard that:
+GPU Profiler is a Windows/Linux dashboard with per-user server configuration
+and an administrator role that:
 
 - Probes a fixed fleet of lab SSH hosts and the local PC for GPU/VRAM, RAM,
   CPU, top RAM processes, disk, and SSH reachability through multiple paths.
@@ -49,8 +48,7 @@ two Desktop shortcuts:
 | `Mesh Watcher.lnk`| `launchers\Mesh Watcher.exe` | Starts the `GPUProfiler-MeshRouteWatcher` Scheduled Task if installed; otherwise shows the install hint.  |
 
 The legacy "GPU Profiler Stop" Desktop shortcut is **no longer created** —
-backend stop is via `scripts\stop.ps1` only. (`scripts\create_desktop_shortcut.ps1`
-is a compatibility wrapper that just calls the launcher installer.)
+backend stop is via `scripts\stop.ps1` only.
 
 ### 2.2 Backend boot path
 
@@ -198,13 +196,11 @@ If port 8765 is down and a browser still wants PAC, `~/.ssh/timeweb-vpn/chatgpt-
 |------------------------------------------|--------------------------------------------------------------------------------------------------------|---------------------------------------|-----------------|
 | `scripts/start.ps1`                      | Detached backend boot. Writes `logs\gpu_profiler.pid`.                                                 | Desktop / `run.bat` / `launchers\GPU Profiler.exe` | Yes. |
 | `scripts/stop.ps1`                       | PID-safe stop of backend (python/uvicorn on `:8765`).                                                  | manual                                | Yes.            |
-| `scripts/create_desktop_shortcut.ps1`    | Compatibility wrapper → `launchers\install_desktop_launchers.ps1`.                                     | manual (legacy)                       | Yes, keep as wrapper. |
 | `scripts/proxy/start_chatgpt_proxy.ps1`  | PID-safe start of sing-box.exe (`~/.ssh/timeweb-vpn\config-chatgpt.json`) on `:10808`. Optional PAC fallback server on `:18080`. | `services/proxy_manager.py` → `scripts\start.ps1` (via task) | Yes. |
 | `scripts/proxy/stop_chatgpt_proxy.ps1`   | Stops only sing-box whose cmdline contains `config-chatgpt.json`. Never mass-kills.                    | `services/proxy_manager.py`           | Yes.            |
 | `scripts/amnezia/mesh_route_watcher.ps1` | The watcher loop (mesh + direct-site, heartbeat, mutex, scheduled task entry).                        | `GPUProfiler-MeshRouteWatcher` Task   | Yes, but its contract (heartbeat JSON shape, status values) is read by `services/mesh_watcher_status.py` and rendered in the UI. |
 | `scripts/amnezia/fix_mesh_routes.ps1`    | Library + standalone script. Removes physical hijack routes, rewrites ZT on-link routes, ensures host /32. `-WhatIf` is supported; `-AsLibrary` dot-sources. | dot-sourced by watcher; runnable manually with `-WhatIf` | Yes.  |
 | `scripts/amnezia/fix_direct_site_routes.ps1` | Library + standalone. Refreshes VK/Yandex/OpenVPN-external CIDRs onto current LAN gateway. `-WhatIf` and `-AsLibrary` supported. | dot-sourced by watcher; runnable manually with `-WhatIf` | Yes. |
-| `scripts/amnezia/fix_vk_wfp_excludes.ps1`| **Deprecated wrapper** that just calls `fix_direct_site_routes.ps1`. Earlier versions edited WFP — that was retired. | manual (legacy) | Treat as deprecated; do not reintroduce WFP edits here. |
 | `scripts/amnezia/install_mesh_route_watcher_task.ps1` | Registers `GPUProfiler-MeshRouteWatcher` (AtLogOn, Highest, restart-on-failure). Admin required. | manual (one-time)            | Yes.            |
 | `scripts/amnezia/uninstall_mesh_route_watcher_task.ps1` | Removes task + stops running watcher process. Admin required.                              | manual                                | Yes.            |
 | `scripts/amnezia/configure_split_tunnel.ps1` | **READ-ONLY helper.** Prints the suggested `ExceptSites` from `config\amnezia_except_sites.txt`. It does **not** write the registry. | manual                  | Yes, but keep it read-only — see safety rules. |
@@ -214,7 +210,7 @@ If port 8765 is down and a browser still wants PAC, `~/.ssh/timeweb-vpn/chatgpt-
 
 | Path                                                | Purpose                                                                                          |
 |-----------------------------------------------------|--------------------------------------------------------------------------------------------------|
-| `launchers/GPU Profiler.exe` / `launchers/Mesh Watcher.exe` | Compiled with `csc / .NET Framework 4.x` (no NuGet). Rebuild with `launchers\build.ps1`.  |
+| `launchers/GPU Profiler.exe` / `launchers/Mesh Watcher.exe` | Generated, gitignored binaries. Build locally with `launchers\build.ps1` using `csc / .NET Framework 4.x` (no NuGet). |
 | `launchers/src/GpuProfilerLauncher.cs`              | Starts `scripts\start.ps1` if `:8765` is closed, then opens browser. Mutex `Local\GPUProfiler.Launcher.8765`. |
 | `launchers/src/MeshWatcherLauncher.cs`              | Uses Schedule.Service COM (no NuGet). If task exists and is not Running, calls `Run`. If missing, shows install hint. |
 | `launchers/build.ps1`                               | Compiles both EXEs from `src\*.cs` with `csc.exe`.                                               |
@@ -660,8 +656,7 @@ when ZT 172 is `ACCESS_DENIED` and OpenVPN is down.
 
 These rules exist because of an earlier incident in which a "fix" attempted
 to disable parts of Amnezia's WFP block filters and a hand-written REG_BINARY
-key — see `docs/history/MESH_VK_REPORT.md` for the post-mortem. They are
-**load-bearing**.
+key. They are **load-bearing**.
 
 **Forbidden actions:**
 
@@ -834,9 +829,5 @@ watcher behaviour, or operational invariants change.
 ```
 
 If you need to add a *new* doc that is not user-facing release notes, ask
-first — duplication of architecture prose into other `.md` files has been the
-source of every contradiction in `docs/history/`.
-
-`docs/history/` is reserved for snapshot reports of past incidents and
-migrations. New entries there must be appended; existing entries must not be
-edited to retroactively change the historical record.
+first — duplicated architecture prose caused contradictory documentation in
+the past. Append operational history to `servers_profiler.md` instead.

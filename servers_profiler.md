@@ -28,15 +28,32 @@ GPU Profiler — локальная FastAPI-панель для наблюден
 Backend работает на Python/FastAPI, frontend — одна HTML-страница с vanilla
 JavaScript без этапа сборки.
 
-По умолчанию приложение является single-user локальным инструментом и
-запускается на `127.0.0.1`. Read-only API можно отдать сотрудникам через
-защищённый reverse proxy, но управляющие операции требуют отдельной защиты.
+Приложение поддерживает пользователей с отдельной конфигурацией серверов. На
+Ubuntu unit слушает `0.0.0.0:8000`, локальный Windows launcher —
+`127.0.0.1:8765`. Публиковать порт следует только в доверенной overlay/LAN сети
+либо через защищённый reverse proxy.
 
 ---
 
 ## 2. Запуск и жизненный цикл
 
-Канонический запуск:
+Канонический production-запуск на Ubuntu:
+
+```bash
+git clone <REPOSITORY_URL> ~/gpu_profiler
+cd ~/gpu_profiler
+bash scripts/ubuntu/install.sh
+```
+
+Приложение устанавливается в `.venv` и работает как
+`gpu-profiler.service` (`systemd --user`). Docker не используется. Обновление:
+
+```bash
+cd ~/gpu_profiler
+bash scripts/ubuntu/update.sh
+```
+
+Локальный запуск на Windows:
 
 ```powershell
 cd C:\Grisha\mipt\asp\NIR\servers\gpu_monitor
@@ -416,7 +433,7 @@ Mesh Route Watcher работает вне backend как Windows Scheduled Task
   `Get-NetRoute`.
 
 Полная топология, адреса overlays, watcher triggers и post-mortem инцидентов
-содержатся в `AGENTS.md` и `docs/history/`.
+содержатся в `AGENTS.md`; история изменений консолидирована в этом файле.
 
 ---
 
@@ -531,7 +548,7 @@ baseline до изменений не существовало, поэтому �
 - `services/gpu-profiler-linux.service` — Linux user-service для deployment.
 - `.env.example` — scheduler, backoff, SSH limit, admin token/password.
 - `AGENTS.md` — обязательные архитектурные и safety invariants.
-- `AUDIT_REPORT.md` — компактный итог аудита.
+- `README.md` — канонический Ubuntu pipeline установки и обновления.
 
 ---
 
@@ -587,26 +604,18 @@ policy на `nettouse.ru:443` либо новый подтверждённый s
 
 ---
 
-## 15. Архив
+## 15. Очистка репозитория и Ubuntu pipeline (20.09.2026)
 
-Актуальный архив исходников:
+Канонический production-запуск на Ubuntu — Python `.venv` и пользовательский
+systemd unit. Docker приложению не требуется. Добавлены воспроизводимые
+`scripts/ubuntu/install.sh` и `scripts/ubuntu/update.sh`; unit больше не зависит
+от `docker.service`.
 
-```text
-C:\Grisha\mipt\asp\NIR\gpu_monitor_audit.zip
-```
-
-В архив входят исходники, frontend, scripts, config examples, tests,
-`README.md`, `AGENTS.md` и audit documentation.
-
-Не входят:
-
-- `.env`;
-- реальные SSH keys и tokens;
-- `users.db`;
-- GPU history и last-good runtime data;
-- logs/runtime;
-- реальные host/project configuration files;
-- Python caches.
+Из Git удалены runtime-артефакты и воспроизводимые бинарники (`users.db`,
+скриншот, собранные launcher EXE), устаревшие compatibility wrappers и
+дублирующие audit/history Markdown. Исходники launchers и build script оставлены.
+Полный порядок установки, обновления, управления и проверки опубликован в
+`README.md`.
 
 ---
 
