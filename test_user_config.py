@@ -32,8 +32,14 @@ def test_user_visibility_and_ip_binding(tmp_path: Path):
         bob_key = user_config.private_host_key("bob", "same_alias")
         user_config.add_host(alice_key, "alice", [{"ssh_target": "same_alias"}], shared=False, display_name="same_alias")
         user_config.add_host(bob_key, "bob", [{"ssh_target": "same_alias"}], shared=False, display_name="same_alias")
-        assert user_config.visible_host_by_name("alice", "same_alias")["hostname"] == alice_key
-        assert user_config.visible_host_by_name("bob", "same_alias")["hostname"] == bob_key
+            assert user_config.visible_host_by_name("alice", "same_alias")["hostname"] == alice_key
+            assert user_config.visible_host_by_name("bob", "same_alias")["hostname"] == bob_key
+            # A database from an earlier version had private aliases as global
+            # keys; initialization migrates them on the next startup.
+            user_config.add_host("legacy_private", "alice", [{"ssh_target": "legacy_private"}], shared=False)
+            user_config.initialize({})
+            migrated = user_config.visible_host_by_name("alice", "legacy_private")
+            assert migrated and migrated["hostname"] == user_config.private_host_key("alice", "legacy_private")
         assert user_config.get_host("aicenter1")["visibility"] == "core"
         assert user_config.get_host("h200")["visibility"] == "core"
         assert user_config.get_host("legacy")["visibility"] == "shared"

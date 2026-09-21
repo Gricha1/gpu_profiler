@@ -56,6 +56,23 @@ def initialize(initial_hosts: dict[str, list[dict[str, Any]]]) -> None:
         columns = {row["name"] for row in db.execute("PRAGMA table_info(hosts)")}
         if "display_name" not in columns:
             db.execute("ALTER TABLE hosts ADD COLUMN display_name TEXT")
+        # Private hosts created before per-user identities used their visible
+        # alias as the global primary key. Move them once so they no longer
+        # prevent another user from adding the same SSH alias.
+        legacy_private = db.execute(
+            "SELECT hostname,owner,display_name FROM hosts WHERE visibility='private'"
+        ).fetchall()
+        for row in legacy_private:
+            hostname, owner = str(row["hostname"]), str(row["owner"] or "")
+            if not owner or hostname.startswith("private--"):
+                continue
+            internal = private_host_key(owner, hostname)
+            if db.execute("SELECT 1 FROM hosts WHERE hostname=?", (internal,)).fetchone():
+                continue
+            db.execute(
+                "UPDATE hosts SET hostname=?,display_name=COALESCE(display_name,?) WHERE hostname=?",
+                (internal, hostname, hostname),
+            )
         now = time.time()
         db.execute(
             "INSERT OR IGNORE INTO users(username,is_admin,created_at) VALUES('admin',1,?)",
