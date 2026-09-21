@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 import threading
 import time
@@ -136,12 +137,39 @@ def get_host(hostname: str) -> dict[str, Any] | None:
     return result
 
 
-def add_host(hostname: str, owner: str, paths: list[dict[str, Any]], *, shared: bool) -> None:
+def private_host_key(owner: str, hostname: str) -> str:
+    """Stable internal key; the displayed card name remains ``hostname``."""
+    digest = hashlib.sha256(owner.casefold().encode("utf-8")).hexdigest()[:12]
+    return f"private--{digest}--{hostname}"
+
+
+def visible_host_by_name(username: str, hostname: str) -> dict[str, Any] | None:
+    """Find a host already usable by this user, including their private copy."""
+    with _lock, _connect() as db:
+        row = db.execute(
+            """SELECT hostname,owner,visibility,display_name,paths_json FROM hosts
+               WHERE (visibility IN ('core','shared') OR owner=? COLLATE NOCASE)
+                 AND (hostname=? COLLATE NOCASE OR display_name=? COLLATE NOCASE)
+               ORDER BY CASE visibility WHEN 'core' THEN 0 WHEN 'shared' THEN 1 ELSE 2 END
+               LIMIT 1""",
+            (username, hostname, hostname),
+        ).fetchone()
+    if not row:
+        return None
+    result = dict(row)
+    result["paths"] = json.loads(result.pop("paths_json"))
+    return result
+
+
+def add_host(
+    hostname: str, owner: str, paths: list[dict[str, Any]], *, shared: bool,
+    display_name: str | None = None,
+) -> None:
     with _lock, _connect() as db:
         db.execute(
-            "INSERT INTO hosts(hostname,owner,visibility,paths_json,created_at) VALUES(?,?,?,?,?)",
+            "INSERT INTO hosts(hostname,owner,visibility,paths_json,created_at,display_name) VALUES(?,?,?,?,?,?)",
             (hostname, owner, "shared" if shared else "private",
-             json.dumps(paths, ensure_ascii=False), time.time()),
+             json.dumps(paths, ensure_ascii=False), time.time(), display_name),
         )
 
 

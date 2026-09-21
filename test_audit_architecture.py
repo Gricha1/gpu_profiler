@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 import app
+import user_config
 import gpu_metrics_history
 import host_paths
 import ssh_runtime
@@ -234,8 +235,8 @@ def test_real_fastapi_add_handler_probes_only_new_host():
             "/api/hosts", json={"hostname": "new_host", "ip": "10.1.2.3", "port": 22}
         )
     assert response.status_code == 200 and response.json()["ok"] is True
-    assert launched == ["new_host"]
-    assert "new_host" in app._host_cache
+    assert launched == [user_config.private_host_key("tester", "new_host")]
+    assert user_config.private_host_key("tester", "new_host") in app._host_cache
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,7 @@ def test_user_visibility_and_ip_binding(tmp_path: Path):
             "legacy": [{"ssh_target": "legacy"}],
         })
         alice = user_config.bind_user("10.0.0.1", "alice")
+        user_config.bind_user("10.0.0.3", "bob")
         admin = user_config.bind_user("10.0.0.2", "admin", is_admin=True)
         assert alice == {"username": "alice", "is_admin": False}
         assert admin == {"username": "admin", "is_admin": True}
@@ -27,6 +28,12 @@ def test_user_visibility_and_ip_binding(tmp_path: Path):
         bob_hosts = {row["hostname"] for row in user_config.visible_hosts("bob")}
         assert "alice_gpu" in alice_hosts and "alice_gpu" not in bob_hosts
         assert "team_gpu" in alice_hosts and "team_gpu" in bob_hosts
+        alice_key = user_config.private_host_key("alice", "same_alias")
+        bob_key = user_config.private_host_key("bob", "same_alias")
+        user_config.add_host(alice_key, "alice", [{"ssh_target": "same_alias"}], shared=False, display_name="same_alias")
+        user_config.add_host(bob_key, "bob", [{"ssh_target": "same_alias"}], shared=False, display_name="same_alias")
+        assert user_config.visible_host_by_name("alice", "same_alias")["hostname"] == alice_key
+        assert user_config.visible_host_by_name("bob", "same_alias")["hostname"] == bob_key
         assert user_config.get_host("aicenter1")["visibility"] == "core"
         assert user_config.get_host("h200")["visibility"] == "core"
         assert user_config.get_host("legacy")["visibility"] == "shared"

@@ -2612,10 +2612,15 @@ def _parse_ssh_config() -> list[dict[str, str]]:
 
 @app.get("/api/ssh-hosts")
 async def api_ssh_hosts(request: Request) -> dict[str, Any]:
-    """Return SSH hosts from ~/.ssh/config, excluding already monitored hosts."""
-    _current_user(request)
+    """Return aliases that are not already visible to the current user."""
+    user = _current_user(request)
     hosts = _parse_ssh_config()
-    monitored = set(HOSTS)
+    visible = await asyncio.to_thread(user_config.visible_hosts, user["username"])
+    monitored = {
+        str(row.get("hostname") or "") for row in visible
+    } | {
+        str(row.get("display_name") or "") for row in visible
+    }
     return {"hosts": [h for h in hosts if h["alias"] not in monitored]}
 
 
@@ -2663,22 +2668,30 @@ async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
 
     lock = _config_lock or asyncio.Lock()
     async with lock:
-        if body.hostname in HOSTS:
+        existing = await asyncio.to_thread(
+            user_config.visible_host_by_name, user["username"], body.hostname
+        )
+        if existing:
             return {"ok": False, "error": f"host '{body.hostname}' already exists"}
-        if await asyncio.to_thread(user_config.get_host, body.hostname):
+        record_key = (
+            body.hostname if user["is_admin"]
+            else user_config.private_host_key(user["username"], body.hostname)
+        )
+        if record_key in HOSTS or await asyncio.to_thread(user_config.get_host, record_key):
             return {"ok": False, "error": f"host '{body.hostname}' already exists"}
+        path_entry["id"] = f"ssh-{record_key}"
         await asyncio.to_thread(
-            user_config.add_host, body.hostname, user["username"], [path_entry],
-            shared=bool(user["is_admin"]),
+            user_config.add_host, record_key, user["username"], [path_entry],
+            shared=bool(user["is_admin"]), display_name=body.hostname,
         )
         await asyncio.to_thread(_write_host_paths_atomic, user_config.all_hosts())
-        HOSTS.append(body.hostname)
-        _host_generation[body.hostname] = _host_generation.get(body.hostname, 0) + 1
-        _host_next_due[body.hostname] = 0.0
+        HOSTS.append(record_key)
+        _host_generation[record_key] = _host_generation.get(record_key, 0) + 1
+        _host_next_due[record_key] = 0.0
     _cache["ts"] = time.time()
 
     placeholder = {
-        "host": body.hostname,
+        "host": record_key,
         "ok": False,
         "reachable": False,
         "error": "загрузка…",
@@ -2687,12 +2700,12 @@ async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
         "latency_ms": None,
         "paths": [path_entry],
     }
-    _host_cache[body.hostname] = placeholder
+    _host_cache[record_key] = placeholder
 
-    _launch_host_probe(body.hostname, immediate=True)
+    _launch_host_probe(record_key, immediate=True)
 
     return {
-        "ok": True, "host": body.hostname, "paths": [path_entry],
+        "ok": True, "host": record_key, "display_name": body.hostname, "paths": [path_entry],
         "visibility": "shared" if user["is_admin"] else "private",
         "owner": user["username"], "can_delete": True,
     }
