@@ -1,4 +1,20 @@
 services:
+  gpu-profiler-init:
+    image: gpu-profiler:local
+    user: "0:0"
+    restart: "no"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /app/data /app/logs /app/runtime /app/config-local
+        chown -R "${APP_UID:-1000}:${APP_GID:-1000}" /app/data /app/logs /app/runtime /app/config-local
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./runtime:/app/runtime
+      - gpu-profiler-config:/app/config-local
+
   gpu-profiler:
     build:
       context: .
@@ -12,6 +28,9 @@ services:
     container_name: gpu-profiler
     restart: unless-stopped
     network_mode: host
+    depends_on:
+      gpu-profiler-init:
+        condition: service_completed_successfully
     env_file:
       - path: .env
         required: false
