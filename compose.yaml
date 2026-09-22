@@ -2,6 +2,9 @@ services:
   gpu-profiler:
     build:
       context: .
+      # The host may use a NetBird DNS resolver reachable only from its
+      # loopback/overlay interface; use that resolver while building too.
+      network: host
       args:
         APP_UID: "${APP_UID:-1000}"
         APP_GID: "${APP_GID:-1000}"
@@ -23,6 +26,7 @@ services:
   gpu-profiler-debug:
     build:
       context: .
+      network: host
       args:
         APP_UID: "${APP_UID:-1000}"
         APP_GID: "${APP_GID:-1000}"

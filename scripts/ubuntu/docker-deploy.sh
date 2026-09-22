@@ -20,6 +20,7 @@ for name in host_paths projects protected_nets; do
 done
 
 docker build \
+  --network host \
   --build-arg "APP_UID=$(id -u)" \
   --build-arg "APP_GID=$(id -g)" \
   --tag "${IMAGE}" .
