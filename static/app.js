@@ -300,7 +300,9 @@
 
     function renderServer(s) {
       const isLocal = !!s.local || s.host === "local";
-      const title = isLocal ? (`этот ПК · ${s.label || s.host}`) : (s.display_name || s.host);
+      const title = isLocal
+        ? (s.display_name ? `${s.display_name} · ${s.label || s.host}` : `этот ПК · ${s.label || s.host}`)
+        : (s.display_name || s.host);
       const online = s.connection_ok == null ? hostOnline(s) : !!s.connection_ok;
       const hasMetrics = !!s.ok;
       const via = s.ssh_via && s.ssh_via !== s.host ? ` via ${s.ssh_via}` : "";
@@ -1087,7 +1089,9 @@
       const viewportY = window.scrollY;
       const gridScrollLeft = grid.scrollLeft;
       const gridScrollTop = grid.scrollTop;
-      const servers = (data.servers || []).filter(s => !s.local && s.host !== "local");
+      // The local probe is not a regular fleet card. The backend exposes it as
+      // `controller` only to admin; retain that card while ignoring raw local.
+      const servers = (data.servers || []).filter(s => s.host !== "local");
       const wanted = new Set(servers.map(s => s.host));
       grid.querySelectorAll("section.server[data-host]").forEach(card => {
         if (!wanted.has(card.dataset.host)) {

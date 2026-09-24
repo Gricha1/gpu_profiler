@@ -47,7 +47,7 @@ def isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     app._host_failures.clear()
     app._host_tasks.clear()
     app._cache.update({"ts": 0.0, "servers": [], "local": None, "local_ts": 0.0, "gen": 0})
-    app._probe_sem = asyncio.Semaphore(3)
+    app._probe_sem = asyncio.Semaphore(1)
     yield
     for task in list(app._host_tasks.values()):
         task.cancel()
@@ -92,7 +92,29 @@ async def test_metrics_requests_never_launch_remote_probe():
 
 
 @pytest.mark.asyncio
-async def test_slow_host_does_not_block_fast_host_commit():
+async def test_controller_card_is_returned_only_to_admin():
+    app._host_cache.update({"a": result("a")})
+    app._cache["local"] = result("local", marker="controller")
+    request = Request({"type": "http", "method": "GET", "path": "/api/metrics",
+                       "headers": [], "client": ("127.0.0.1", 1234)})
+    visible = [{"hostname": "a", "owner": "admin", "visibility": "core"}]
+
+    with patch("app.user_config.visible_hosts", return_value=visible), \
+         patch("app.user_config.user_for_ip", return_value={"username": "alice", "is_admin": False}):
+        normal = await app.metrics(request)
+    assert {row["host"] for row in normal["servers"]} == {"a"}
+
+    with patch("app.user_config.visible_hosts", return_value=visible), \
+         patch("app.user_config.user_for_ip", return_value={"username": "admin", "is_admin": True}):
+        admin = await app.metrics(request)
+    controller = next(row for row in admin["servers"] if row["host"] == "controller")
+    assert controller["local"] is True
+    assert controller["display_name"] == "ControllerServer"
+    assert controller["can_delete"] is False
+
+
+@pytest.mark.asyncio
+async def test_global_probe_limit_serializes_host_commits():
     fast_committed = asyncio.Event()
 
     async def fake_probe(host: str):
@@ -111,9 +133,11 @@ async def test_slow_host_does_not_block_fast_host_commit():
     with patch("app._probe_host", side_effect=fake_probe), patch("app._apply_probe_result", side_effect=observing_apply):
         slow = asyncio.create_task(app._run_host_probe("a", 1))
         fast = asyncio.create_task(app._run_host_probe("b", 1))
-        await asyncio.wait_for(fast_committed.wait(), 0.08)
+        await asyncio.sleep(0.08)
+        assert not fast_committed.is_set()
         assert not slow.done()
         await asyncio.gather(slow, fast)
+    assert fast_committed.is_set()
 
 
 def test_all_route_ssh_processes_obey_shared_limit():

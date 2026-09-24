@@ -350,6 +350,8 @@ moved to an external coordinator.
   additions are private to their owner.
 - Admin may delete any host. A normal user may delete only their own private
   hosts. The backend enforces this rule; hiding the gear icon is only a UI aid.
+- The runtime `ControllerServer` card is not an SSH inventory host. It reports
+  the machine running the backend and is returned only to the `admin` user.
 - Admin may set a per-host `display_name`. Renaming is presentation-only and
   must never change the SSH hostname, scheduler key, history key or cache path.
 - `host_paths.json` is a runtime compatibility mirror of the SQLite inventory,

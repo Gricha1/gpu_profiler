@@ -273,7 +273,18 @@ def _placeholder_servers() -> list[dict[str, Any]]:
     return out
 
 
-def _with_local(servers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _with_local(
+    servers: list[dict[str, Any]], *, include_controller: bool = False
+) -> list[dict[str, Any]]:
+    """Optionally prepend metrics for the host running this backend.
+
+    The controller host is operational information, not a fleet server: expose
+    it only to the administrator and keep it out of the persisted SSH-host
+    inventory.
+    """
+    if not include_controller:
+        return list(servers)
+
     local = _cache.get("local")
     if not local:
         local = {
@@ -287,7 +298,20 @@ def _with_local(servers: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "ram_top": [],
             "latency_ms": None,
         }
-    return [local, *servers]
+    controller = dict(local)
+    controller.update(
+        {
+            "host": "controller",
+            "local": True,
+            "display_name": "ControllerServer",
+            "controller": True,
+            "visibility": "admin",
+            "owner": "admin",
+            "can_delete": False,
+            "can_rename": False,
+        }
+    )
+    return [controller, *servers]
 
 @asynccontextmanager
 async def _lifespan(_application: FastAPI):
@@ -2272,14 +2296,14 @@ async def metrics(request: Request) -> dict[str, Any]:
         return {
             "updated_at": _cache["ts"],
             "cached": True,
-            "servers": _with_local(servers),
+            "servers": _with_local(servers, include_controller=bool(user["is_admin"])),
             "zerotier": zt, "user": user,
         }
 
     return {
         "updated_at": now,
         "cached": False,
-        "servers": _with_local(servers),
+        "servers": _with_local(servers, include_controller=bool(user["is_admin"])),
         "zerotier": zt, "user": user,
     }
 
