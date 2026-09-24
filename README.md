@@ -17,9 +17,10 @@ non-root application process, including when it is invoked by `root`.
 ## Доступ к серверам GPU
 
 Нужны одна сеть NetBird, SSH-доступ по ключу к GPU-серверам и заполненный
-`~/.ssh/config` на ControllerServer. При Docker-запуске от `root` это
-`/root/.ssh/config`; публичный ключ ControllerServer должен быть добавлен в
-`~/.ssh/authorized_keys` выбранного пользователя на каждом GPU-сервере.
+`~/.ssh/config` на сервере, где запускается GPU Profiler. При Docker-запуске
+от `root` это `/root/.ssh/config`; публичный ключ этого сервера должен быть
+добавлен в `~/.ssh/authorized_keys` выбранного пользователя на каждом
+GPU-сервере.
 
 Пример для Ubuntu: `~/.ssh/config`.
 
@@ -44,7 +45,7 @@ Host aicenter3
 ```
 
 `Host` — произвольное имя, `HostName` — NetBird IP, `User` — пользователь на
-GPU-сервере, `IdentityFile` — приватный ключ ControllerServer. Для Windows
+GPU-сервере, `IdentityFile` — приватный ключ для подключения. Для Windows
 используйте тот же пример в `C:\Users\<user>\.ssh\config` и путь вида
 `C:/Users/<user>/.ssh/id_ed25519`.
 
