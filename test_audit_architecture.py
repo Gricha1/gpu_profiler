@@ -133,7 +133,7 @@ def test_all_route_ssh_processes_obey_shared_limit():
             futures = [pool.submit(host_paths._ssh_ok, f"h{i}") for i in range(12)]
             assert all(f.result()[0] for f in futures)
     snap = ssh_runtime.snapshot()
-    assert snap["peak_active"] <= snap["max_active_limit"] == 3
+    assert snap["peak_active"] <= snap["max_active_limit"] == 1
     assert snap["connections_last_minute"] == 12
 
 

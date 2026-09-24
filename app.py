@@ -132,7 +132,7 @@ REMOTE_REFRESH_SEC = max(5.0, float(os.getenv("GPU_MONITOR_REFRESH_SEC", "15")))
 REMOTE_BACKOFF_MAX_SEC = max(
     REMOTE_REFRESH_SEC, float(os.getenv("GPU_MONITOR_BACKOFF_MAX_SEC", "120"))
 )
-ssh_runtime.configure(int(os.getenv("GPU_MONITOR_SSH_MAX_ACTIVE", "3")))
+ssh_runtime.configure(int(os.getenv("GPU_MONITOR_SSH_MAX_ACTIVE", "1")))
 
 
 def _probe_script() -> bytes:
@@ -197,7 +197,7 @@ logger = logging.getLogger("gpu_monitor")
 
 # Per-host independentный кэш — каждый хост обновляется независимо
 _host_cache: dict[str, dict[str, Any]] = {}
-_probe_sem = asyncio.Semaphore(3)
+_probe_sem = asyncio.Semaphore(1)
 _host_generation: dict[str, int] = {host: 0 for host in HOSTS}
 _host_tasks: dict[str, asyncio.Task[Any]] = {}
 _host_next_due: dict[str, float] = {host: 0.0 for host in HOSTS}

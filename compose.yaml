@@ -36,6 +36,9 @@ services:
         required: false
     environment:
       GPU_MONITOR_CONFIG_DIR: /app/config-local
+      # A small ControllerServer must not start several expensive SSH probes
+      # at once.
+      GPU_MONITOR_SSH_MAX_ACTIVE: "1"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -43,6 +46,9 @@ services:
       - gpu-profiler-config:/app/config-local
       - ${HOME}/.ssh:/home/app/.ssh:ro
   gpu-profiler-debug:
+    # Developer UI is opt-in: `docker compose --profile debug up -d`.
+    # Keeping it out of the normal stack saves memory on ControllerServer.
+    profiles: ["debug"]
     build:
       context: .
       network: host

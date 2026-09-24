@@ -277,8 +277,8 @@ at `LOCAL_REFRESH_SEC = 2.0` independently of the remote sweep.
   up to 120s (`GPU_MONITOR_BACKOFF_MAX_SEC`). `/api/metrics` never starts SSH.
 - `_host_tasks` prevents duplicate probes per host. `_host_generation` prevents
   a late DELETE→ADD result from being committed to the new host identity.
-- `asyncio.Semaphore(3)` caps concurrent host probes. `ssh_runtime.py` adds the
-  authoritative process-wide cap (default 3, `GPU_MONITOR_SSH_MAX_ACTIVE`) to
+- `asyncio.Semaphore(1)` caps concurrent host probes by default. `ssh_runtime.py` adds the
+  authoritative process-wide cap (default 1, `GPU_MONITOR_SSH_MAX_ACTIVE`) to
   metrics, alternate-route checks, file browsing, SDK-agent tools and legacy
   VPN SSH checks. Diagnostics: authenticated `GET /api/diagnostics/ssh`.
 - A successful regular probe does not re-check every route. Cached route
