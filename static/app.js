@@ -2052,6 +2052,7 @@
         const alias = h.alias || "";
         const hostname = h.hostname || "";
         const user = h.user || "";
+        btn.dataset.sshAlias = alias;
         btn.innerHTML = `<span class="ssh-alias">${escapeHtml(alias)}</span>` +
           (hostname ? `<span class="ssh-hostname">${escapeHtml(hostname)}</span>` : "") +
           (user ? `<span class="ssh-user">${escapeHtml(user)}</span>` : "");
@@ -2135,6 +2136,8 @@
         ip: addIp.value.trim(),
         port: parseInt(addPort.value, 10),
       };
+      const selectedSshAlias = addSshList.querySelector(".add-ssh-item.selected")?.dataset.sshAlias;
+      if (selectedSshAlias) body.ssh_target = selectedSshAlias;
       addMsg.textContent = "добавление…";
       addMsg.className = "add-msg";
       try {

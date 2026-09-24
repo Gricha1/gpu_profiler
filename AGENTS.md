@@ -237,6 +237,8 @@ If port 8765 is down and a browser still wants PAC, `~/.ssh/timeweb-vpn/chatgpt-
 
 - `~/.ssh/config` — OpenSSH host aliases (`aicenter1`, `aicenter2`, `aicenter3`,
   `aicenteritl`, `ml3`, `ml4`, `h200`, `lab_comp`, `cds2`, `timeweb-vps`, …).
+  Selecting an alias in the Add Server UI persists that alias as the SSH
+  target, so its configured user, key, and options are used for metrics.
 - `~/.ssh/timeweb-vpn/` — `sing-box.exe`, `config-chatgpt.json` (Shadowsocks
   secrets), `chatgpt-proxy-lib.ps1`, `chatgpt.pac`, `chatgpt-pac-server.ps1`,
   PID files. Treated as a local runtime dependency: binaries + secrets stay
