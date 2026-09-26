@@ -101,6 +101,53 @@ def test_developer_ui_is_mounted_on_primary_listener(monkeypatch):
     assert client.post("/developer/api/control/restart").status_code == 404
 
 
+def test_agent_token_accepts_metrics_and_rejects_wrong_token(tmp_path: Path, monkeypatch):
+    original_db = user_config._db_path
+    original_hosts = list(app.HOSTS)
+    try:
+        user_config.configure(tmp_path / "agents.sqlite3")
+        user_config.initialize({})
+        user_config.add_host(
+            "h200-agent", "admin", [{"id": "agent-h200-agent", "kind": "agent"}], shared=True
+        )
+        user_config.set_agent_token("h200-agent", "correct-token")
+        app.HOSTS[:] = ["h200-agent"]
+        app._host_cache.clear()
+        monkeypatch.setattr(
+            app, "load_host_paths", lambda: {"h200-agent": [{"kind": "agent"}]}
+        )
+        client = TestClient(app.app)
+        probe = """0, NVIDIA H200, 10, 143771, 5, GPU-test
+---PROCS---
+---USERS---
+---RAM---
+Mem: 1000 250 0 0 0 750
+---DISK---
+Filesystem 1B-blocks Used Available Use% Mounted on
+/dev/sda 1000 200 800 20% /host
+---HOME---
+10\t/host/home/test
+---ALL_HOMES---
+test\t10\t/host/home/test
+"""
+        assert client.post(
+            "/api/agents/h200-agent/metrics", json={"probe_output": probe},
+            headers={"X-GPU-Agent-Token": "wrong"},
+        ).status_code == 401
+        assert client.post(
+            "/api/agents/h200-agent/metrics", json={"probe_output": probe},
+            headers={"X-GPU-Agent-Token": "correct-token"},
+        ).status_code == 200
+        state = app._host_cache["h200-agent"]
+        assert state["agent"] is True and state["gpus"][0]["name"] == "NVIDIA H200"
+        app._mark_stale_agents(state["last_success_at"] + app.AGENT_STALE_SEC + 1)
+        assert app._host_cache["h200-agent"]["stale"] is True
+    finally:
+        app.HOSTS[:] = original_hosts
+        app._host_cache.clear()
+        user_config.configure(original_db)
+
+
 def test_existing_database_gets_display_name_migration(tmp_path: Path):
     import sqlite3
 

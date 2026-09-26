@@ -1895,6 +1895,11 @@
     const addServerModal = document.getElementById("addServerModal");
     const addServerClose = document.getElementById("addServerClose");
     const addSshList = document.getElementById("addSshList");
+    const addSource = document.getElementById("addSource");
+    const addSshSource = document.getElementById("addSshSource");
+    const addPortField = document.getElementById("addPortField");
+    const addIpField = document.getElementById("addIpField");
+    const agentSetup = document.getElementById("agentSetup");
     const addHostname = document.getElementById("addHostname");
     const addPort = document.getElementById("addPort");
     const addIp = document.getElementById("addIp");
@@ -2009,7 +2014,10 @@
       addServerModal.setAttribute("aria-hidden", "false");
       addMsg.textContent = "";
       addMsg.className = "add-msg";
-      loadSshHosts();
+      agentSetup.hidden = true;
+      addSource.value = "ssh";
+      addSource.querySelector('option[value="agent"]').disabled = !currentUser?.is_admin;
+      setAddSource();
     }
 
     function closeAddServer() {
@@ -2022,9 +2030,19 @@
       const ip = addIp.value.trim();
       const port = parseInt(addPort.value, 10);
       const valid = hostname && /^[a-zA-Z0-9_-]+$/.test(hostname) &&
-                    ip.length > 0 &&
-                    port >= 1 && port <= 65535;
+                    (addSource.value === "agent" || (ip.length > 0 && port >= 1 && port <= 65535));
       addSubmit.disabled = !valid;
+    }
+
+    function setAddSource() {
+      const agent = addSource.value === "agent";
+      addSshSource.hidden = agent;
+      addPortField.hidden = agent;
+      addIpField.hidden = agent;
+      addRefreshPeers.hidden = agent;
+      addSubmit.textContent = agent ? "Создать ключ агента" : "Добавить";
+      if (!agent) loadSshHosts();
+      validateAddForm();
     }
 
     async function loadSshHosts() {
@@ -2125,6 +2143,7 @@
       if (e.target === addServerModal) closeAddServer();
     });
     addRefreshPeers.addEventListener("click", loadSshHosts);
+    addSource.addEventListener("change", setAddSource);
     addHostname.addEventListener("input", validateAddForm);
     addIp.addEventListener("input", validateAddForm);
     addPort.addEventListener("input", validateAddForm);
@@ -2132,6 +2151,7 @@
     addSubmit.addEventListener("click", async () => {
       const body = {
         hostname: addHostname.value.trim(),
+        source: addSource.value,
         ip: addIp.value.trim(),
         port: parseInt(addPort.value, 10),
       };
@@ -2168,7 +2188,19 @@
           // Call renderGrid() to show the new server immediately with correct structure
           renderGrid();
           
-          setTimeout(() => { closeAddServer(); }, 400);
+          if (data.agent) {
+            const env = [
+              `GPU_FLEET_ENDPOINT=${data.agent.endpoint}`,
+              `GPU_FLEET_HOST=${data.host}`,
+              `GPU_FLEET_AGENT_TOKEN=${data.agent.token}`,
+              "GPU_FLEET_INTERVAL_SEC=5",
+            ].join("\n");
+            agentSetup.textContent = "Сохраните ключ: он больше не будет показан.\n\n" + env +
+              "\n\nНа GPU-сервере: git clone https://github.com/Gricha1/gpu_profiler.git && cd gpu_profiler/agents; создайте .env с этим содержимым, затем docker compose up -d --build";
+            agentSetup.hidden = false;
+          } else {
+            setTimeout(() => { closeAddServer(); }, 400);
+          }
           // Don't call tick() here - let auto-refresh (5s) pick up fresh data after background cache update
         } else {
           addMsg.textContent = data.error || "ошибка";

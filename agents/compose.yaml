@@ -1,0 +1,21 @@
+services:
+  gpu-profiler-agent:
+    build:
+      context: ..
+      dockerfile: agents/Dockerfile
+    image: gpu-profiler-agent:local
+    container_name: gpu-profiler-agent
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    gpus: all
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      # The host filesystem is mounted below /host. Override these if the
+      # monitored account homes live elsewhere.
+      GPU_MONITOR_PROBE_HOME: /host/data/homes/gorbov_gv
+      GPU_MONITOR_PROBE_HOMES_DIR: /host/data/homes
+    volumes:
+      - /:/host:ro

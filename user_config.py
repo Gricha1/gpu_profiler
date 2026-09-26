@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import hmac
 import sqlite3
 import threading
 import time
@@ -51,6 +52,11 @@ def initialize(initial_hosts: dict[str, list[dict[str, Any]]]) -> None:
                 created_at REAL NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_hosts_owner ON hosts(owner);
+            CREATE TABLE IF NOT EXISTS agent_tokens (
+                hostname TEXT PRIMARY KEY COLLATE NOCASE REFERENCES hosts(hostname) ON DELETE CASCADE,
+                token_digest TEXT NOT NULL,
+                created_at REAL NOT NULL
+            );
             """
         )
         columns = {row["name"] for row in db.execute("PRAGMA table_info(hosts)")}
@@ -202,3 +208,27 @@ def rename_host(hostname: str, display_name: str | None) -> bool:
             (display_name, hostname),
         )
         return cursor.rowcount == 1
+
+
+def set_agent_token(hostname: str, token: str) -> None:
+    """Store only a digest; the plaintext token is returned once to the admin."""
+    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    with _lock, _connect() as db:
+        db.execute(
+            """INSERT INTO agent_tokens(hostname,token_digest,created_at) VALUES(?,?,?)
+               ON CONFLICT(hostname) DO UPDATE SET
+                 token_digest=excluded.token_digest, created_at=excluded.created_at""",
+            (hostname, digest, time.time()),
+        )
+
+
+def agent_token_valid(hostname: str, token: str) -> bool:
+    if not token:
+        return False
+    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    with _lock, _connect() as db:
+        row = db.execute(
+            "SELECT token_digest FROM agent_tokens WHERE hostname=? COLLATE NOCASE",
+            (hostname,),
+        ).fetchone()
+    return bool(row and hmac.compare_digest(str(row["token_digest"]), digest))

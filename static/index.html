@@ -1522,13 +1522,20 @@
       </div>
       <div class="add-modal-body">
         <div class="add-field">
+          <label for="addSource">Источник метрик</label>
+          <select id="addSource">
+            <option value="ssh">SSH</option>
+            <option value="agent">Агент отправляет данные</option>
+          </select>
+        </div>
+        <div class="add-field" id="addSshSource">
           <label>SSH хосты <span style="font-weight:400; text-transform:none;">из ~/.ssh/config</span></label>
           <div class="add-ssh-list" id="addSshList">
             <span style="color: var(--muted); font-size: 0.78rem;">загрузка…</span>
           </div>
         </div>
         <div class="add-row">
-          <div class="add-field">
+          <div class="add-field" id="addPortField">
             <label for="addHostname">Имя хоста</label>
             <input id="addHostname" type="text" placeholder="my_server" autocomplete="off" />
           </div>
@@ -1537,11 +1544,12 @@
             <input id="addPort" type="number" value="22" min="1" max="65535" />
           </div>
         </div>
-        <div class="add-field">
+        <div class="add-field" id="addIpField">
           <label for="addIp">IP-адрес / HostName</label>
           <input id="addIp" type="text" placeholder="IP или hostname" autocomplete="off" />
         </div>
         <div class="add-msg" id="addMsg"></div>
+        <pre id="agentSetup" hidden style="white-space:pre-wrap; overflow-wrap:anywhere; margin:0; padding:.7rem; border:1px solid var(--line-strong); border-radius:8px; color:var(--ink); background:#0a1017;"></pre>
       </div>
       <div class="modal-foot" style="justify-content: space-between;">
         <button type="button" id="addRefreshPeers" style="background: transparent; border-color: var(--line-strong); color: var(--muted);">Обновить</button>

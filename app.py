@@ -8,6 +8,7 @@ import hmac
 import json
 import os
 import re
+import secrets
 import socket
 import subprocess
 import threading
@@ -133,6 +134,7 @@ REMOTE_REFRESH_SEC = max(5.0, float(os.getenv("GPU_MONITOR_REFRESH_SEC", "15")))
 REMOTE_BACKOFF_MAX_SEC = max(
     REMOTE_REFRESH_SEC, float(os.getenv("GPU_MONITOR_BACKOFF_MAX_SEC", "120"))
 )
+AGENT_STALE_SEC = max(15.0, float(os.getenv("GPU_MONITOR_AGENT_STALE_SEC", "30")))
 ssh_runtime.configure(int(os.getenv("GPU_MONITOR_SSH_MAX_ACTIVE", "1")))
 
 
@@ -237,6 +239,37 @@ def _host_cache_paths(host: str) -> list[dict[str, Any]]:
         }
         for p in (path_cfg.get(host) or [])
     ]
+
+
+def _is_agent_host(host: str) -> bool:
+    return any(path.get("kind") == "agent" for path in (load_host_paths().get(host) or []))
+
+
+def _mark_stale_agents(now: float) -> None:
+    """Retain the last payload while making a missing agent heartbeat visible."""
+    for host in list(HOSTS):
+        if not _is_agent_host(host):
+            continue
+        state = _host_cache.get(host)
+        if not state:
+            continue
+        last_seen = float(state.get("last_success_at") or 0.0)
+        if now - last_seen <= AGENT_STALE_SEC:
+            continue
+        state.update(
+            {
+                "ok": bool(state.get("gpus") or state.get("ram")),
+                "connection_ok": False,
+                "reachable": False,
+                "polling": False,
+                "stale": True,
+                "error": "agent heartbeat timeout",
+                "paths": [{
+                    "id": f"agent-{host}", "label": "Metrics agent", "kind": "agent",
+                    "ok": False, "ms": None, "detail": "heartbeat timeout",
+                }],
+            }
+        )
 
 
 def _placeholder_servers() -> list[dict[str, Any]]:
@@ -2019,7 +2052,9 @@ async def _metrics_scheduler() -> None:
         if now_wall - float(_cache.get("zerotier_ts") or 0.0) >= 30.0 and not _zerotier_refreshing:
             _track_task(_refresh_zerotier())
         for host in list(HOSTS):
-            _launch_host_probe(host)
+            if not _is_agent_host(host):
+                _launch_host_probe(host)
+        _mark_stale_agents(now_wall)
         try:
             await asyncio.wait_for(_scheduler_stop.wait(), timeout=0.5)
         except asyncio.TimeoutError:
@@ -2655,8 +2690,9 @@ async def api_ssh_hosts(request: Request) -> dict[str, Any]:
 
 class _AddHostBody(BaseModel):
     hostname: str = Field(min_length=1, max_length=64)
+    source: str = Field(default="ssh")
     network: str = Field(default="ssh")
-    ip: str = Field(min_length=1, max_length=256)
+    ip: str = Field(default="", max_length=256)
     port: int = Field(default=22, ge=1, le=65535)
     ssh_target: str | None = None
 
@@ -2683,17 +2719,30 @@ async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
     user = _current_user(request)
     if not re.match(r"^[a-zA-Z0-9_-]+$", body.hostname):
         return {"ok": False, "error": "hostname: letters, digits, _ and - only"}
-    ssh_target = body.ssh_target or f"reedgern@{body.ip}"
-    if not _valid_ssh_target(ssh_target) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", body.ip):
-        return {"ok": False, "error": "invalid IP/SSH target"}
-    path_entry: dict[str, Any] = {
-        "id": f"ssh-{body.hostname}",
-        "label": f"SSH ({body.ip})",
-        "kind": "ssh",
-        "ssh_target": ssh_target,
-        "ip": body.ip,
-        "port": body.port,
-    }
+    if body.source not in {"ssh", "agent"}:
+        return {"ok": False, "error": "unknown source"}
+    if body.source == "agent" and not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="only admin can add an agent")
+    if body.source == "agent":
+        path_entry: dict[str, Any] = {
+            "id": f"agent-{body.hostname}",
+            "label": "Metrics agent",
+            "kind": "agent",
+        }
+    else:
+        if not body.ip:
+            return {"ok": False, "error": "IP/HostName is required for SSH"}
+        ssh_target = body.ssh_target or f"reedgern@{body.ip}"
+        if not _valid_ssh_target(ssh_target) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", body.ip):
+            return {"ok": False, "error": "invalid IP/SSH target"}
+        path_entry = {
+            "id": f"ssh-{body.hostname}",
+            "label": f"SSH ({body.ip})",
+            "kind": "ssh",
+            "ssh_target": ssh_target,
+            "ip": body.ip,
+            "port": body.port,
+        }
 
     lock = _config_lock or asyncio.Lock()
     async with lock:
@@ -2717,6 +2766,10 @@ async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
         HOSTS.append(record_key)
         _host_generation[record_key] = _host_generation.get(record_key, 0) + 1
         _host_next_due[record_key] = 0.0
+        agent_token = None
+        if body.source == "agent":
+            agent_token = secrets.token_urlsafe(32)
+            await asyncio.to_thread(user_config.set_agent_token, record_key, agent_token)
     _cache["ts"] = time.time()
 
     placeholder = {
@@ -2729,15 +2782,64 @@ async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
         "latency_ms": None,
         "paths": [path_entry],
     }
+    if body.source == "agent":
+        placeholder.update({"agent": True, "stale": False, "error": "waiting for agent heartbeat"})
     _host_cache[record_key] = placeholder
 
-    _launch_host_probe(record_key, immediate=True)
+    if body.source == "ssh":
+        _launch_host_probe(record_key, immediate=True)
 
-    return {
+    response = {
         "ok": True, "host": record_key, "display_name": body.hostname, "paths": [path_entry],
         "visibility": "shared" if user["is_admin"] else "private",
         "owner": user["username"], "can_delete": True,
     }
+    if agent_token:
+        response["agent"] = {
+            "token": agent_token,
+            "endpoint": f"{str(request.base_url).rstrip('/')}/api/agents/{record_key}/metrics",
+        }
+    return response
+
+
+@app.post("/api/agents/{hostname}/metrics")
+async def api_agent_metrics(hostname: str, request: Request) -> dict[str, Any]:
+    """Receive a signed raw remote_probe snapshot from a registered host agent."""
+    token = request.headers.get("x-gpu-agent-token", "")
+    if not await asyncio.to_thread(user_config.agent_token_valid, hostname, token):
+        raise HTTPException(status_code=401, detail="invalid agent token")
+    if hostname not in HOSTS or not _is_agent_host(hostname):
+        raise HTTPException(status_code=404, detail="unknown agent host")
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid JSON") from exc
+    probe_output = body.get("probe_output") if isinstance(body, dict) else None
+    if not isinstance(probe_output, str) or not probe_output.strip() or len(probe_output) > 512_000:
+        raise HTTPException(status_code=422, detail="invalid probe output")
+    result = _parse_output(hostname, probe_output, "", 0)
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("error") or "invalid metrics")
+    now = time.time()
+    path = {
+        "id": f"agent-{hostname}", "label": "Metrics agent", "kind": "agent",
+        "ok": True, "ms": None, "detail": "heartbeat received",
+    }
+    committed = {
+        **result,
+        "paths": [path],
+        "agent": True,
+        "connection_ok": True,
+        "reachable": True,
+        "polling": False,
+        "stale": False,
+        "last_attempt_at": now,
+        "last_success_at": now,
+    }
+    _host_cache[hostname] = committed
+    _cache["ts"] = now
+    await asyncio.to_thread(_persist_last_good, hostname, committed)
+    return {"ok": True}
 
 
 @app.patch("/api/hosts/{hostname}")

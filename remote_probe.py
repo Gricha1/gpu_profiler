@@ -64,7 +64,7 @@ def main() -> None:
     print("---RAM---")
     print(run(["free", "-b"]).rstrip())
 
-    home = os.path.expanduser("~")
+    home = os.environ.get("GPU_MONITOR_PROBE_HOME") or os.path.expanduser("~")
     print("---DISK---")
     # Home mount first (for MY HOME %), then extra large volumes if present.
     disk_targets = [home]
@@ -101,7 +101,7 @@ def main() -> None:
 
     print("---ALL_HOMES---")
     # Collect disk usage for all users in /home
-    home_dir = "/home"
+    home_dir = os.environ.get("GPU_MONITOR_PROBE_HOMES_DIR") or "/home"
     if os.path.isdir(home_dir):
         try:
             users = [d for d in os.listdir(home_dir) if os.path.isdir(os.path.join(home_dir, d))]
