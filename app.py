@@ -200,6 +200,7 @@ logger = logging.getLogger("gpu_monitor")
 
 # Per-host independentный кэш — каждый хост обновляется независимо
 _host_cache: dict[str, dict[str, Any]] = {}
+_agent_cache: dict[str, dict[str, Any]] = {}
 _probe_sem = asyncio.Semaphore(1)
 _host_generation: dict[str, int] = {host: 0 for host in HOSTS}
 _host_tasks: dict[str, asyncio.Task[Any]] = {}
@@ -245,31 +246,32 @@ def _is_agent_host(host: str) -> bool:
     return any(path.get("kind") == "agent" for path in (load_host_paths().get(host) or []))
 
 
+def _agent_id_for_host(host: str) -> str | None:
+    for path in load_host_paths().get(host) or []:
+        if path.get("kind") == "agent":
+            return str(path.get("agent_id") or host)
+    return None
+
+
+def _hosts_for_agent(agent_id: str) -> list[str]:
+    return [host for host in HOSTS if _agent_id_for_host(host) == agent_id]
+
+
 def _mark_stale_agents(now: float) -> None:
     """Retain the last payload while making a missing agent heartbeat visible."""
-    for host in list(HOSTS):
-        if not _is_agent_host(host):
-            continue
-        state = _host_cache.get(host)
-        if not state:
-            continue
-        last_seen = float(state.get("last_success_at") or 0.0)
+    for agent_id, agent_state in list(_agent_cache.items()):
+        last_seen = float(agent_state.get("last_success_at") or 0.0)
         if now - last_seen <= AGENT_STALE_SEC:
             continue
-        state.update(
-            {
-                "ok": bool(state.get("gpus") or state.get("ram")),
-                "connection_ok": False,
-                "reachable": False,
-                "polling": False,
-                "stale": True,
-                "error": "agent heartbeat timeout",
-                "paths": [{
-                    "id": f"agent-{host}", "label": "Metrics agent", "kind": "agent",
-                    "ok": False, "ms": None, "detail": "heartbeat timeout",
-                }],
-            }
-        )
+        agent_state["stale"] = True
+        for host in _hosts_for_agent(agent_id):
+            state = _host_cache.get(host)
+            if state:
+                state.update({
+                    "connection_ok": False, "reachable": False, "polling": False,
+                    "stale": True, "error": "agent heartbeat timeout",
+                    "paths": [{"id": f"agent-{agent_id}", "label": "Metrics agent", "kind": "agent", "ok": False, "ms": None, "detail": "heartbeat timeout"}],
+                })
 
 
 def _placeholder_servers() -> list[dict[str, Any]]:
@@ -2697,15 +2699,16 @@ async def api_agents(request: Request) -> dict[str, Any]:
     now = time.time()
     agents = []
     for record in await asyncio.to_thread(user_config.agent_hosts):
-        host = str(record["hostname"])
-        state = _host_cache.get(host) or {}
-        last_seen = state.get("last_success_at")
+        agent_id = str(record["hostname"])
+        state = _agent_cache.get(agent_id) or {}
+        last_seen = state.get("last_success_at") or record.get("last_seen_at")
         agents.append(
             {
-                "host": host,
-                "display_name": record.get("display_name") or host,
+                "host": agent_id,
+                "display_name": record.get("display_name") or agent_id,
                 "online": bool(last_seen and now - float(last_seen) <= AGENT_STALE_SEC),
                 "last_seen_at": last_seen,
+                "attached": bool(_hosts_for_agent(agent_id)),
             }
         )
     return {"agents": agents}
@@ -2718,6 +2721,11 @@ class _AddHostBody(BaseModel):
     ip: str = Field(default="", max_length=256)
     port: int = Field(default=22, ge=1, le=65535)
     ssh_target: str | None = None
+    agent_id: str | None = None
+
+
+class _CreateAgentBody(BaseModel):
+    agent_id: str = Field(min_length=1, max_length=64)
 
 
 class _RenameHostBody(BaseModel):
@@ -2747,10 +2755,14 @@ async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
     if body.source == "agent" and not user["is_admin"]:
         raise HTTPException(status_code=403, detail="only admin can add an agent")
     if body.source == "agent":
+        agent_id = (body.agent_id or "").strip()
+        if not agent_id or not await asyncio.to_thread(user_config.agent_exists, agent_id):
+            return {"ok": False, "error": "select a registered agent"}
         path_entry: dict[str, Any] = {
             "id": f"agent-{body.hostname}",
             "label": "Metrics agent",
             "kind": "agent",
+            "agent_id": agent_id,
         }
     else:
         if not body.ip:
@@ -2789,10 +2801,6 @@ async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
         HOSTS.append(record_key)
         _host_generation[record_key] = _host_generation.get(record_key, 0) + 1
         _host_next_due[record_key] = 0.0
-        agent_token = None
-        if body.source == "agent":
-            agent_token = secrets.token_urlsafe(32)
-            await asyncio.to_thread(user_config.set_agent_token, record_key, agent_token)
     _cache["ts"] = time.time()
 
     placeholder = {
@@ -2817,12 +2825,23 @@ async def api_add_host(body: _AddHostBody, request: Request) -> dict[str, Any]:
         "visibility": "shared" if user["is_admin"] else "private",
         "owner": user["username"], "can_delete": True,
     }
-    if agent_token:
-        response["agent"] = {
-            "token": agent_token,
-            "endpoint": f"{str(request.base_url).rstrip('/')}/api/agents/{record_key}/metrics",
-        }
     return response
+
+
+@app.post("/api/agents")
+async def api_create_agent(body: _CreateAgentBody, request: Request) -> dict[str, Any]:
+    """Issue a one-time agent credential without creating a visible card."""
+    user = _current_user(request)
+    agent_id = body.agent_id.strip()
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="administrator access required")
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", agent_id):
+        return {"ok": False, "error": "agent name: letters, digits, _ and - only"}
+    if await asyncio.to_thread(user_config.agent_exists, agent_id):
+        return {"ok": False, "error": f"agent '{agent_id}' already exists"}
+    token = secrets.token_urlsafe(32)
+    await asyncio.to_thread(user_config.set_agent_token, agent_id, token)
+    return {"ok": True, "agent": {"id": agent_id, "token": token, "endpoint": f"{str(request.base_url).rstrip('/')}/api/agents/{agent_id}/metrics"}}
 
 
 @app.post("/api/agents/{hostname}/metrics")
@@ -2831,8 +2850,6 @@ async def api_agent_metrics(hostname: str, request: Request) -> dict[str, Any]:
     token = request.headers.get("x-gpu-agent-token", "")
     if not await asyncio.to_thread(user_config.agent_token_valid, hostname, token):
         raise HTTPException(status_code=401, detail="invalid agent token")
-    if hostname not in HOSTS or not _is_agent_host(hostname):
-        raise HTTPException(status_code=404, detail="unknown agent host")
     try:
         body = await request.json()
     except Exception as exc:
@@ -2859,9 +2876,13 @@ async def api_agent_metrics(hostname: str, request: Request) -> dict[str, Any]:
         "last_attempt_at": now,
         "last_success_at": now,
     }
-    _host_cache[hostname] = committed
+    _agent_cache[hostname] = committed
+    for host in _hosts_for_agent(hostname):
+        host_state = {**committed, "host": host, "agent_id": hostname}
+        _host_cache[host] = host_state
+        await asyncio.to_thread(_persist_last_good, host, host_state)
+    await asyncio.to_thread(user_config.touch_agent, hostname, now)
     _cache["ts"] = now
-    await asyncio.to_thread(_persist_last_good, hostname, committed)
     return {"ok": True}
 
 

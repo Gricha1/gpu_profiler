@@ -1908,6 +1908,7 @@
     const addMsg = document.getElementById("addMsg");
     const addSubmit = document.getElementById("addSubmit");
     const addRefreshPeers = document.getElementById("addRefreshPeers");
+    let selectedAgentId = "";
 
     function openUserModal(required = false) {
       userModal.classList.add("open");
@@ -2018,6 +2019,7 @@
       addMsg.className = "add-msg";
       agentSetup.hidden = true;
       addSource.value = "ssh";
+      selectedAgentId = "";
       addSource.querySelector('option[value="agent"]').disabled = !currentUser?.is_admin;
       setAddSource();
     }
@@ -2043,7 +2045,9 @@
       addPortField.hidden = agent;
       addIpField.hidden = agent;
       addRefreshPeers.hidden = agent;
-      addSubmit.textContent = agent ? "Создать ключ агента" : "Добавить";
+      addSubmit.textContent = agent
+        ? (selectedAgentId ? "Добавить выбранный агент" : "Создать ключ агента")
+        : "Добавить";
       if (agent) loadAgents();
       else loadSshHosts();
       validateAddForm();
@@ -2065,8 +2069,16 @@
           const seen = agent.last_seen_at
             ? new Date(agent.last_seen_at * 1000).toLocaleTimeString("ru-RU")
             : "ещё нет heartbeat";
-          return `<div class="add-ssh-item" style="cursor:default"><span class="ssh-alias">${escapeHtml(agent.display_name)}</span><span class="ssh-hostname">${status} · ${seen}</span></div>`;
+          const attached = agent.attached ? " · уже добавлен" : "";
+          return `<button type="button" class="add-ssh-item" data-agent-id="${escapeHtml(agent.host)}" ${agent.attached ? "disabled" : ""}><span class="ssh-alias">${escapeHtml(agent.display_name)}</span><span class="ssh-hostname">${status} · ${seen}${attached}</span></button>`;
         }).join("");
+        agentList.querySelectorAll("[data-agent-id]").forEach(button => button.addEventListener("click", () => {
+          selectedAgentId = button.dataset.agentId;
+          addHostname.value = selectedAgentId;
+          agentList.querySelectorAll(".add-ssh-item").forEach(item => item.classList.remove("selected"));
+          button.classList.add("selected");
+          setAddSource();
+        }));
       } catch (_error) {
         agentList.innerHTML = '<span style="color: var(--bad); font-size: 0.78rem;">не удалось загрузить агентов</span>';
       }
@@ -2176,12 +2188,42 @@
     addPort.addEventListener("input", validateAddForm);
 
     addSubmit.addEventListener("click", async () => {
+      if (addSource.value === "agent" && !selectedAgentId) {
+        addMsg.textContent = "создание ключа…";
+        addMsg.className = "add-msg";
+        try {
+          const res = await fetch("/api/agents", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agent_id: addHostname.value.trim() }),
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || data.detail || "ошибка");
+          const agent = data.agent;
+          const env = [
+            `GPU_FLEET_ENDPOINT=${agent.endpoint}`,
+            `GPU_FLEET_HOST=${agent.id}`,
+            `GPU_FLEET_AGENT_TOKEN=${agent.token}`,
+            "GPU_FLEET_INTERVAL_SEC=5",
+          ].join("\n");
+          addMsg.textContent = "Ключ создан. После запуска агент появится в списке выше.";
+          addMsg.className = "add-msg ok";
+          agentSetup.textContent = "Сохраните ключ: он больше не будет показан.\n\n" + env +
+            "\n\nНа GPU-сервере: git clone https://github.com/Gricha1/gpu_profiler.git && cd gpu_profiler/agents; создайте .env с этим содержимым, затем docker compose up -d --build";
+          agentSetup.hidden = false;
+          await loadAgents();
+        } catch (error) {
+          addMsg.textContent = error.message || "ошибка сети";
+          addMsg.className = "add-msg bad";
+        }
+        return;
+      }
       const body = {
         hostname: addHostname.value.trim(),
         source: addSource.value,
         ip: addIp.value.trim(),
         port: parseInt(addPort.value, 10),
       };
+      if (selectedAgentId) body.agent_id = selectedAgentId;
       const selectedSshAlias = addSshList.querySelector(".add-ssh-item.selected")?.dataset.sshAlias;
       if (selectedSshAlias) body.ssh_target = selectedSshAlias;
       addMsg.textContent = "добавление…";

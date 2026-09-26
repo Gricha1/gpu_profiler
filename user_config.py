@@ -57,11 +57,24 @@ def initialize(initial_hosts: dict[str, list[dict[str, Any]]]) -> None:
                 token_digest TEXT NOT NULL,
                 created_at REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS agents (
+                agent_id TEXT PRIMARY KEY COLLATE NOCASE,
+                token_digest TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                last_seen_at REAL
+            );
             """
         )
         columns = {row["name"] for row in db.execute("PRAGMA table_info(hosts)")}
         if "display_name" not in columns:
             db.execute("ALTER TABLE hosts ADD COLUMN display_name TEXT")
+        # Agent registration used to be tied to a host row. Preserve all
+        # legacy registrations, but keep future agents independent so deleting
+        # a card cannot revoke a running agent.
+        db.execute(
+            """INSERT OR IGNORE INTO agents(agent_id,token_digest,created_at)
+               SELECT hostname,token_digest,created_at FROM agent_tokens"""
+        )
         # Private hosts created before per-user identities used their visible
         # alias as the global primary key. Move them once so they no longer
         # prevent another user from adding the same SSH alias.
@@ -211,12 +224,12 @@ def rename_host(hostname: str, display_name: str | None) -> bool:
 
 
 def set_agent_token(hostname: str, token: str) -> None:
-    """Store only a digest; the plaintext token is returned once to the admin."""
+    """Register an agent independently from any visible host card."""
     digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
     with _lock, _connect() as db:
         db.execute(
-            """INSERT INTO agent_tokens(hostname,token_digest,created_at) VALUES(?,?,?)
-               ON CONFLICT(hostname) DO UPDATE SET
+            """INSERT INTO agents(agent_id,token_digest,created_at) VALUES(?,?,?)
+               ON CONFLICT(agent_id) DO UPDATE SET
                  token_digest=excluded.token_digest, created_at=excluded.created_at""",
             (hostname, digest, time.time()),
         )
@@ -228,7 +241,7 @@ def agent_token_valid(hostname: str, token: str) -> bool:
     digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
     with _lock, _connect() as db:
         row = db.execute(
-            "SELECT token_digest FROM agent_tokens WHERE hostname=? COLLATE NOCASE",
+            "SELECT token_digest FROM agents WHERE agent_id=? COLLATE NOCASE",
             (hostname,),
         ).fetchone()
     return bool(row and hmac.compare_digest(str(row["token_digest"]), digest))
@@ -238,8 +251,17 @@ def agent_hosts() -> list[dict[str, Any]]:
     """Registered push agents, without exposing their credentials."""
     with _lock, _connect() as db:
         rows = db.execute(
-            """SELECT h.hostname,h.display_name,h.visibility,a.created_at
-               FROM agent_tokens a JOIN hosts h ON h.hostname=a.hostname
-               ORDER BY h.created_at,h.hostname"""
+            """SELECT agent_id AS hostname,agent_id AS display_name,created_at,last_seen_at
+               FROM agents ORDER BY created_at,agent_id"""
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def agent_exists(agent_id: str) -> bool:
+    with _lock, _connect() as db:
+        return bool(db.execute("SELECT 1 FROM agents WHERE agent_id=? COLLATE NOCASE", (agent_id,)).fetchone())
+
+
+def touch_agent(agent_id: str, timestamp: float) -> None:
+    with _lock, _connect() as db:
+        db.execute("UPDATE agents SET last_seen_at=? WHERE agent_id=? COLLATE NOCASE", (timestamp, agent_id))
