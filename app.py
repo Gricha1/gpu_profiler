@@ -2688,6 +2688,29 @@ async def api_ssh_hosts(request: Request) -> dict[str, Any]:
     return {"hosts": [h for h in hosts if h["alias"] not in monitored]}
 
 
+@app.get("/api/agents")
+async def api_agents(request: Request) -> dict[str, Any]:
+    """List registered push agents for the admin add-server dialog."""
+    user = _current_user(request)
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="administrator access required")
+    now = time.time()
+    agents = []
+    for record in await asyncio.to_thread(user_config.agent_hosts):
+        host = str(record["hostname"])
+        state = _host_cache.get(host) or {}
+        last_seen = state.get("last_success_at")
+        agents.append(
+            {
+                "host": host,
+                "display_name": record.get("display_name") or host,
+                "online": bool(last_seen and now - float(last_seen) <= AGENT_STALE_SEC),
+                "last_seen_at": last_seen,
+            }
+        )
+    return {"agents": agents}
+
+
 class _AddHostBody(BaseModel):
     hostname: str = Field(min_length=1, max_length=64)
     source: str = Field(default="ssh")

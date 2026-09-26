@@ -1897,6 +1897,8 @@
     const addSshList = document.getElementById("addSshList");
     const addSource = document.getElementById("addSource");
     const addSshSource = document.getElementById("addSshSource");
+    const addAgentSource = document.getElementById("addAgentSource");
+    const agentList = document.getElementById("agentList");
     const addPortField = document.getElementById("addPortField");
     const addIpField = document.getElementById("addIpField");
     const agentSetup = document.getElementById("agentSetup");
@@ -2037,12 +2039,37 @@
     function setAddSource() {
       const agent = addSource.value === "agent";
       addSshSource.hidden = agent;
+      addAgentSource.hidden = !agent;
       addPortField.hidden = agent;
       addIpField.hidden = agent;
       addRefreshPeers.hidden = agent;
       addSubmit.textContent = agent ? "Создать ключ агента" : "Добавить";
-      if (!agent) loadSshHosts();
+      if (agent) loadAgents();
+      else loadSshHosts();
       validateAddForm();
+    }
+
+    async function loadAgents() {
+      agentList.innerHTML = '<span style="color: var(--muted); font-size: 0.78rem;">загрузка…</span>';
+      try {
+        const res = await fetch("/api/agents", { cache: "no-store" });
+        if (!res.ok) throw new Error("agent list unavailable");
+        const data = await res.json();
+        const agents = data.agents || [];
+        if (!agents.length) {
+          agentList.innerHTML = '<span style="color: var(--muted); font-size: 0.78rem;">нет подключённых агентов</span>';
+          return;
+        }
+        agentList.innerHTML = agents.map(agent => {
+          const status = agent.online ? "online" : "offline";
+          const seen = agent.last_seen_at
+            ? new Date(agent.last_seen_at * 1000).toLocaleTimeString("ru-RU")
+            : "ещё нет heartbeat";
+          return `<div class="add-ssh-item" style="cursor:default"><span class="ssh-alias">${escapeHtml(agent.display_name)}</span><span class="ssh-hostname">${status} · ${seen}</span></div>`;
+        }).join("");
+      } catch (_error) {
+        agentList.innerHTML = '<span style="color: var(--bad); font-size: 0.78rem;">не удалось загрузить агентов</span>';
+      }
     }
 
     async function loadSshHosts() {

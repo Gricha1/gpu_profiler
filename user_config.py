@@ -232,3 +232,14 @@ def agent_token_valid(hostname: str, token: str) -> bool:
             (hostname,),
         ).fetchone()
     return bool(row and hmac.compare_digest(str(row["token_digest"]), digest))
+
+
+def agent_hosts() -> list[dict[str, Any]]:
+    """Registered push agents, without exposing their credentials."""
+    with _lock, _connect() as db:
+        rows = db.execute(
+            """SELECT h.hostname,h.display_name,h.visibility,a.created_at
+               FROM agent_tokens a JOIN hosts h ON h.hostname=a.hostname
+               ORDER BY h.created_at,h.hostname"""
+        ).fetchall()
+    return [dict(row) for row in rows]

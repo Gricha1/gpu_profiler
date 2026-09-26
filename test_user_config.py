@@ -111,6 +111,7 @@ def test_agent_token_accepts_metrics_and_rejects_wrong_token(tmp_path: Path, mon
             "h200-agent", "admin", [{"id": "agent-h200-agent", "kind": "agent"}], shared=True
         )
         user_config.set_agent_token("h200-agent", "correct-token")
+        assert user_config.agent_hosts()[0]["hostname"] == "h200-agent"
         app.HOSTS[:] = ["h200-agent"]
         app._host_cache.clear()
         monkeypatch.setattr(
