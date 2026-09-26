@@ -100,6 +100,11 @@ def main() -> None:
     print(home_line if home_line else f"0\t{home}")
 
     print("---ALL_HOMES---")
+    # Push agents run with a short heartbeat. On a large GPU server a complete
+    # sequential du of every user home can take minutes, so an agent may opt
+    # out while still reporting the configured account home above.
+    if os.environ.get("GPU_MONITOR_PROBE_SKIP_ALL_HOMES") == "1":
+        return
     # Collect disk usage for all users in /home
     home_dir = os.environ.get("GPU_MONITOR_PROBE_HOMES_DIR") or "/home"
     if os.path.isdir(home_dir):
