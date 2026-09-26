@@ -149,6 +149,27 @@ test\t10\t/host/home/test
         user_config.configure(original_db)
 
 
+def test_probe_parses_inferred_docker_owner():
+    probe = """0, NVIDIA A100, 600, 81920, 12, GPU-test
+---PROCS---
+GPU-test,4242,600,python
+---USERS---
+4242,docker: ivanov_aa
+---RAM---
+Mem: 1000 250 0 0 0 750
+---DISK---
+Filesystem 1B-blocks Used Available Use% Mounted on
+/dev/sda 1000 200 800 20% /data
+---HOME---
+10\t/data/homes/test
+---ALL_HOMES---
+"""
+    result = app._parse_output("test", probe, "", 0)
+    assert result["ok"] is True
+    assert result["gpus"][0]["processes"][0]["user"] == "docker: ivanov_aa"
+    assert result["gpus"][0]["users"] == [{"user": "docker: ivanov_aa", "mem_mib": 600.0, "mem_gib": 0.59}]
+
+
 def test_existing_database_gets_display_name_migration(tmp_path: Path):
     import sqlite3
 
