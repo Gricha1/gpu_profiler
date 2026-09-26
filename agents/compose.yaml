@@ -15,8 +15,8 @@ services:
     environment:
       # The host filesystem is mounted below /host. Override these if the
       # monitored account homes live elsewhere.
-      GPU_MONITOR_PROBE_HOME: /host/data/homes/gorbov_gv
-      GPU_MONITOR_PROBE_HOMES_DIR: /host/data/homes
-      GPU_MONITOR_PROBE_SKIP_ALL_HOMES: "1"
+      GPU_MONITOR_PROBE_HOME: ${GPU_MONITOR_PROBE_HOME:-/host/home}
+      GPU_MONITOR_PROBE_HOMES_DIR: ${GPU_MONITOR_PROBE_HOMES_DIR:-/host/home}
+      GPU_MONITOR_PROBE_SKIP_ALL_HOMES: ${GPU_MONITOR_PROBE_SKIP_ALL_HOMES:-1}
     volumes:
       - /:/host:ro
