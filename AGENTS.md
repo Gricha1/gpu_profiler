@@ -74,6 +74,7 @@ backend stop is via `scripts\stop.ps1` only.
 | URL                                       | What                                |
 |-------------------------------------------|-------------------------------------|
 | `http://127.0.0.1:8765/`                  | Single-page UI (`static/index.html`)|
+| `/developer/`                              | Admin-only usage analytics and CSV  |
 | `GET /api/metrics`                        | Local + remote hosts (cached)       |
 | `GET /api/network/public-ip`              | Public IP / mode (45s cache)        |
 | `GET /api/network/mesh-health`            | NetBird + ZeroTier health (15s)     |
@@ -92,6 +93,10 @@ Read-only monitoring endpoints are public to the bound interface. Mutating or
 sensitive endpoints use `require_admin`: loopback clients are trusted; remote
 clients must send `Authorization: Bearer <GPU_MONITOR_ADMIN_TOKEN>` or
 `X-Admin-Token`. The canonical launcher still binds to loopback only.
+
+The mounted `/developer/` UI uses the same IP-bound admin identity as the
+main UI. Its update and restart controls are disabled; the standalone `:8001`
+Developer UI remains the optional maintenance interface.
 
 ---
 

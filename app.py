@@ -47,6 +47,7 @@ from services.mesh_health import get_mesh_health
 from services.mesh_watcher_status import get_watcher_status, start_mesh_watcher
 from services.public_ip import get_public_ip_status
 from services.quotas import aggregator as quotas_aggregator
+import debug_app
 import user_tracking
 import gpu_metrics_history
 import ssh_runtime
@@ -324,6 +325,10 @@ async def _lifespan(_application: FastAPI):
 
 
 app = FastAPI(title="GPU Monitor", lifespan=_lifespan)
+# Usage analytics is also available through the primary listener. The mounted
+# app uses the main UI's IP-bound admin role, not a second browser session.
+debug_app.app.state.embedded = True
+app.mount("/developer", debug_app.app)
 
 
 def _track_task(coro: Any) -> asyncio.Task[Any]:

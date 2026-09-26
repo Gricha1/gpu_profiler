@@ -53,8 +53,7 @@
       const isAdmin = Boolean(currentUser?.is_admin);
       debugUiBtn.hidden = !isAdmin;
       if (isAdmin) {
-        const port = location.port === "8765" ? "8766" : "8001";
-        debugUiBtn.href = `${location.protocol}//${location.hostname}:${port}/`;
+        debugUiBtn.href = "/developer/";
       }
     }
     let firstPaint = true;

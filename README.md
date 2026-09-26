@@ -10,9 +10,11 @@ Compose prepares ownership of its mutable volumes before starting the
 non-root application process, including when it is invoked by `root`.
 
 - приложение: `http://<SERVER_IP>:8000/`
-- Developer UI (optional): `docker compose --profile debug up -d`, then
-  `http://<SERVER_IP>:8001/`. It is deliberately excluded from the normal
-  deployment to reduce ControllerServer memory use.
+- Developer UI для admin: `http://<SERVER_IP>:8000/developer/`. Статистика и
+  CSV доступны через основной порт; отдельный порт открывать не нужно.
+- Standalone Developer UI (опционально): `docker compose --profile debug up -d`,
+  затем `http://<SERVER_IP>:8001/`. Он нужен только для кнопок обновления и
+  перезапуска приложения.
 
 ## Доступ к серверам GPU
 

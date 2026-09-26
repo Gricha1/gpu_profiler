@@ -82,6 +82,25 @@ def test_host_delete_permissions():
     assert app._can_delete_host(admin, core)
 
 
+def test_developer_ui_is_mounted_on_primary_listener(monkeypatch):
+    client = TestClient(app.app)
+
+    monkeypatch.setattr(
+        user_config, "user_for_ip", lambda _ip: {"username": "alice", "is_admin": False}
+    )
+    assert client.get("/developer/").status_code == 403
+    assert client.get("/developer/api/stats").status_code == 401
+
+    monkeypatch.setattr(
+        user_config, "user_for_ip", lambda _ip: {"username": "admin", "is_admin": True}
+    )
+    page = client.get("/developer/")
+    assert page.status_code == 200
+    assert "fetch('api/stats')" in page.text
+    assert client.get("/developer/api/stats").status_code == 200
+    assert client.post("/developer/api/control/restart").status_code == 404
+
+
 def test_existing_database_gets_display_name_migration(tmp_path: Path):
     import sqlite3
 
