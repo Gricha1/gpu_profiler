@@ -130,7 +130,7 @@ At logon Scheduled Task "GPUProfiler-MeshRouteWatcher"
 └─ powershell scripts/amnezia/mesh_route_watcher.ps1 (Mutex: Global\GPUProfilerMeshRouteWatcher)
    ├─ A) Mesh fix (scripts/amnezia/fix_mesh_routes.ps1 as -AsLibrary)
    │     - Removes ONLY physical Wi-Fi/LAN hijack routes for:
-   │         100.98.0.0/16 → wt0         (NetBird, probe 100.98.59.202)
+   │         100.98.0.0/16 → wt0         (NetBird, probe 100.98.99.16)
    │         10.43.71.0/24 → ZT cds_team (probe 10.43.71.7)
    │         192.168.194.0/24 → ZT network_home (probe 192.168.194.7)
    │         172.24.158.182 → ZT nwid 0cccb752f7a913d8 (often ACCESS_DENIED)
@@ -414,7 +414,7 @@ paths exist for fallback and reachability pills in the UI.
 
 #### `aicenter1` / `aicenter2` / `aicenter3` (NetBird peers)
 
-`100.98.208.203`, `100.98.59.202`, `100.98.241.137`. Each has a preferred
+`100.98.208.203`, `100.98.99.16`, `100.98.241.137`. Each has a preferred
 `ssh_config` row plus a `netbird` direct (`100.98.x.y`), a `zt_cds` zero-tier
 fallback (`10.43.71.82/124`), and `lan_campus` (`10.55.229.159`, `10.55.230.12`,
 `10.55.228.129`). `aicenteritl` has an extra `public_old` legacy at
@@ -477,7 +477,7 @@ no tun2_steal), `ssh lab_comp` succeeds.
 
 Verification recipe (matches `services/mesh_health._zerotier_health`):
 
-1. `Find-NetRoute -RemoteIPAddress 100.98.59.202` → must be `wt0`.
+1. `Find-NetRoute -RemoteIPAddress 100.98.99.16` → must be `wt0`.
 2. `Find-NetRoute -RemoteIPAddress 10.43.71.7` → must be `ZeroTier One [93c72639168b9551]`,
    and the route's NextHop must be `0.0.0.0` (on-link) — see §8.
 3. `ssh -o BatchMode=yes -o ConnectTimeout=5 lab_comp echo OK` → must return `OK`.
@@ -755,14 +755,14 @@ After any change that touches ZeroTier / NetBird / OpenVPN / Amnezia, run:
 
 ```powershell
 # 1) Find the actual route(s)
-Find-NetRoute -RemoteIPAddress 100.98.59.202      # expect via wt0
+Find-NetRoute -RemoteIPAddress 100.98.99.16      # expect via wt0
 Find-NetRoute -RemoteIPAddress 10.43.71.7         # expect via ZeroTier One [93c72639168b9551]
 Find-NetRoute -RemoteIPAddress 192.168.194.7      # expect via ZeroTier One [60ee7c034a970d9d]
 Find-NetRoute -RemoteIPAddress 172.24.158.182     # may be missing / ACCESS_DENIED — that is the current state
 Find-NetRoute -RemoteIPAddress 10.0.116.11        # expect via outline-tap / OpenVPN / TAP
 
 # 2) Layer-3 reachability (where allowed)
-Test-NetConnection 100.98.59.202 -Port 22
+Test-NetConnection 100.98.99.16 -Port 22
 Test-NetConnection 10.43.71.7    -Port 22
 
 # 3) End-to-end SSH (this is what actually matters)

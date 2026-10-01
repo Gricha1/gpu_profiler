@@ -45,7 +45,7 @@ $script:MeshTargets = @(
     PrefixStarts      = @('100.98.')
     GoodRoutePrefixes = @('100.98.')
     GoodIfaceRegex    = '^wt0$'
-    ProbeIp           = '100.98.59.202'
+    ProbeIp           = '100.98.99.16'
   },
   @{
     Name              = 'ZeroTier-cds_team'

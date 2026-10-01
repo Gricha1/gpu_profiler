@@ -18,7 +18,7 @@ _cache: dict[str, Any] = {"ts": 0.0, "data": None}
 
 # Representative probes (must stay on overlay IPs from ssh config / host_paths)
 NETBIRD_PROBES = [
-    {"name": "aicenter2", "host": "100.98.59.202", "port": 22},
+    {"name": "aicenter2", "host": "100.98.99.16", "port": 22},
     {"name": "aicenteritl", "host": "100.98.50.236", "port": 22},
 ]
 # Direct Windows→10.43.71.7 is black-holed; lab_comp uses ProxyJump cds2 (NetBird 100.98.2.11).
