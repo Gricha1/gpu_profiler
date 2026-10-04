@@ -48,6 +48,40 @@
     const userLoginBack = document.getElementById("userLoginBack");
     const userLoginError = document.getElementById("userLoginError");
     let currentUser = null;
+    let adminCardOrder = [];
+    let draggedServerCard = null;
+
+    function adminCardOrderKey() {
+      return currentUser?.is_admin
+        ? `gpu_monitor_admin_card_order_v1_${currentUser.username}`
+        : null;
+    }
+
+    function loadAdminCardOrder() {
+      adminCardOrder = [];
+      const key = adminCardOrderKey();
+      if (!key) return;
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || "[]");
+        if (Array.isArray(saved)) {
+          adminCardOrder = saved.filter(host => typeof host === "string" && host.length <= 128);
+        }
+      } catch (_) {}
+    }
+
+    function persistAdminCardOrder() {
+      const key = adminCardOrderKey();
+      if (!key) return;
+      localStorage.setItem(key, JSON.stringify(adminCardOrder));
+    }
+
+    function orderedServerCards(servers) {
+      if (!currentUser?.is_admin || !adminCardOrder.length) return servers;
+      const byHost = new Map(servers.map(server => [server.host, server]));
+      const ordered = adminCardOrder.map(host => byHost.get(host)).filter(Boolean);
+      const known = new Set(ordered.map(server => server.host));
+      return ordered.concat(servers.filter(server => !known.has(server.host)));
+    }
 
     function updateDebugUiButton() {
       const isAdmin = Boolean(currentUser?.is_admin);
@@ -353,7 +387,13 @@
             body += `<div class="empty">DISK: нет данных</div>`;
           }
 
-          if (s.all_homes && s.all_homes.length) {
+          const homeScan = s.all_homes_status;
+          const homeScanNote = homeScan && homeScan.state === "partial"
+            ? `<div class="home-scan-note">Измерено home: ${homeScan.measured} из ${homeScan.total}; остальные недоступны SSH-пользователю.</div>`
+            : homeScan && homeScan.state === "unavailable"
+              ? `<div class="home-scan-note">Список home недоступен SSH-пользователю.</div>`
+              : "";
+          if (s.all_homes && s.all_homes.length > 1) {
             const savedSelection = localStorage.getItem(`home_usage_${s.host}`);
             const defaultUsername = savedSelection && s.all_homes.some(h => h.username === savedSelection) 
               ? savedSelection 
@@ -372,6 +412,7 @@
                 <div class="home-details" id="home-details-${escapeHtml(s.host)}">
                   <div class="row-label"><span title="${escapeHtml(selectedHome.path || "")}">${fmtGiB(selectedHome.used_bytes)}${selectedHome.disk_pct != null ? ` · ${selectedHome.disk_pct}% диска` : ""}</span></div>${bar(Math.min(homePct, 100), "home")}
                 </div>
+                ${homeScanNote}
               </div>`;
           } else if (s.home_disk) {
             const homePct = s.home_disk.disk_pct != null ? s.home_disk.disk_pct : 0;
@@ -382,9 +423,10 @@
               <div class="ram">
                 <div class="row-label"><span>MY HOME</span><span title="${escapeHtml(s.home_disk.path || "")}">${homeLabel}</span></div>
                 ${bar(Math.min(homePct, 100), "home")}
+                ${homeScanNote}
               </div>`;
           } else {
-            body += `<div class="empty">HOME: нет данных</div>`;
+            body += `<div class="empty">HOME: нет данных</div>${homeScanNote}`;
           }
         }
 
@@ -448,9 +490,12 @@
         }
       }
 
+      const dragHandle = currentUser?.is_admin
+        ? `<button type="button" class="card-drag-handle" draggable="true" title="Перетащить карточку" aria-label="Перетащить карточку">⠿</button>`
+        : "";
       return `<section class="server server-${escapeHtml(s.host)}" data-host="${escapeHtml(s.host)}"${firstPaint ? "" : ' style="animation:none"'}>
         <div class="server-head">
-          <div class="host">${escapeHtml(title)}</div>
+          <div class="host-wrap">${dragHandle}<div class="host">${escapeHtml(title)}</div></div>
           <div style="display:flex;align-items:center;gap:0.5rem;">
             ${badge}
             ${s.can_delete ? `<div class="card-settings">
@@ -1027,6 +1072,7 @@
 
     function isProjectPickerBusy() {
       if (browseModal.classList.contains("open")) return true;
+      if (draggedServerCard) return true;
       // Never replace or move a card while its settings popup is open.
       // Removing the focused gear button makes browsers scroll its replacement
       // into view, which used to jump the right-hand page/slider to the top.
@@ -1090,7 +1136,7 @@
       const gridScrollTop = grid.scrollTop;
       // The local probe is not a regular fleet card. The backend exposes it as
       // `controller` only to admin; retain that card while ignoring raw local.
-      const servers = (data.servers || []).filter(s => s.host !== "local");
+      const servers = orderedServerCards((data.servers || []).filter(s => s.host !== "local"));
       const wanted = new Set(servers.map(s => s.host));
       grid.querySelectorAll("section.server[data-host]").forEach(card => {
         if (!wanted.has(card.dataset.host)) {
@@ -1147,6 +1193,40 @@
       
       firstPaint = false;
     }
+
+    grid.addEventListener("dragstart", (event) => {
+      if (!currentUser?.is_admin || !event.target.closest(".card-drag-handle")) return;
+      const card = event.target.closest("section.server[data-host]");
+      if (!card) return;
+      draggedServerCard = card;
+      card.classList.add("dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", card.dataset.host);
+    });
+
+    grid.addEventListener("dragover", (event) => {
+      if (!draggedServerCard) return;
+      const target = event.target.closest("section.server[data-host]");
+      if (!target || target === draggedServerCard) return;
+      event.preventDefault();
+      const bounds = target.getBoundingClientRect();
+      const before = event.clientY < bounds.top + bounds.height / 2;
+      grid.insertBefore(draggedServerCard, before ? target : target.nextElementSibling);
+    });
+
+    grid.addEventListener("drop", (event) => {
+      if (!draggedServerCard) return;
+      event.preventDefault();
+    });
+
+    grid.addEventListener("dragend", () => {
+      if (!draggedServerCard) return;
+      draggedServerCard.classList.remove("dragging");
+      adminCardOrder = Array.from(grid.querySelectorAll("section.server[data-host]"))
+        .map(card => card.dataset.host);
+      persistAdminCardOrder();
+      draggedServerCard = null;
+    });
 
     let _tickSeq = 0;
     let _tickRunning = false;
@@ -1959,6 +2039,7 @@
       const data = await res.json();
       if (!data.user) return openUserModal(true);
       currentUser = data.user;
+      loadAdminCardOrder();
       updateDebugUiButton();
       userSwitchBtn.textContent = `Пользователь: ${currentUser.username}`;
       locallyAddedHosts.clear();
@@ -1992,6 +2073,7 @@
         if (res.status === 404) throw new Error("Перезапустите backend для включения пользователей");
         if (!res.ok) throw new Error(data.detail || "Ошибка входа");
         currentUser = data.user;
+        loadAdminCardOrder();
         updateDebugUiButton();
         userSwitchBtn.textContent = `Пользователь: ${currentUser.username}`;
         userModal.dataset.required = "0";

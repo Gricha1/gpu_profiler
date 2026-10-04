@@ -75,6 +75,35 @@ def _known_home_users() -> set[str]:
         return set()
 
 
+def _du_size_line(path: str, timeout: int, *, require_complete: bool = True) -> str | None:
+    """Return a numeric ``du -sb`` line, optionally requiring a full walk.
+
+    A directory that cannot be read may make GNU du print a partial total and
+    exit non-zero. The all-home scan requires success so an inaccessible home
+    is not presented as a real 0-byte home in the dashboard.
+    """
+    for cmd in (
+        ["timeout", str(timeout), "du", "-sb", path],
+        ["du", "-sb", path],
+    ):
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                universal_newlines=True,
+                timeout=timeout + 3,
+                check=False,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+        lines = (proc.stdout or "").strip().splitlines()
+        line = lines[-1].strip() if lines else ""
+        if line and line[0].isdigit() and (proc.returncode == 0 or not require_complete):
+            return line
+    return None
+
+
 def _mountinfo_owner(pid: str, known_users: set[str]) -> str | None:
     """Infer one user from bind-mount roots in a container's mount namespace."""
     owners: set[str] = set()
@@ -211,29 +240,10 @@ def main() -> None:
     print(run(["df", "-B1", "-P", *disk_targets]).rstrip())
     print("---HOME---")
     # Cap runtime so slow NFS homes don't stall the whole probe.
-    # du often exits 1 on permission-denied subdirs but still prints a total.
-    home_line = ""
-    for cmd in (
-        ["timeout", "12", "du", "-sb", home],
-        ["du", "-sb", home],
-    ):
-        try:
-            proc = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                universal_newlines=True,
-                timeout=15,
-                check=False,
-            )
-            line = (proc.stdout or "").strip().splitlines()
-            if line:
-                # Prefer last non-empty line: "BYTES\tPATH"
-                home_line = line[-1].strip()
-                if home_line and home_line[0].isdigit():
-                    break
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            continue
+    # Preserve the account's own best-effort total even if one of its children
+    # is unreadable. Other users are stricter below: their incomplete totals
+    # are omitted rather than being represented as a false zero.
+    home_line = _du_size_line(home, timeout=12, require_complete=False)
     print(home_line if home_line else f"0\t{home}")
 
     print("---ALL_HOMES---")
@@ -241,41 +251,32 @@ def main() -> None:
     # sequential du of every user home can take minutes, so an agent may opt
     # out while still reporting the configured account home above.
     if os.environ.get("GPU_MONITOR_PROBE_SKIP_ALL_HOMES") == "1":
+        print("---ALL_HOMES_STATUS---")
+        print("disabled\t0\t0")
         return
     # Collect disk usage for all users in /home
     home_dir = os.environ.get("GPU_MONITOR_PROBE_HOMES_DIR") or "/home"
+    users: list[str] = []
+    measured = 0
     if os.path.isdir(home_dir):
         try:
             users = [d for d in os.listdir(home_dir) if os.path.isdir(os.path.join(home_dir, d))]
             for user in sorted(users):
                 user_path = os.path.join(home_dir, user)
-                user_line = ""
-                for cmd in (
-                    ["timeout", "10", "du", "-sb", user_path],
-                    ["du", "-sb", user_path],
-                ):
-                    try:
-                        proc = subprocess.run(
-                            cmd,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL,
-                            universal_newlines=True,
-                            timeout=12,
-                            check=False,
-                        )
-                        line = (proc.stdout or "").strip().splitlines()
-                        if line:
-                            user_line = line[-1].strip()
-                            if user_line and user_line[0].isdigit():
-                                break
-                    except (FileNotFoundError, subprocess.TimeoutExpired):
-                        continue
+                user_line = _du_size_line(user_path, timeout=10)
                 if user_line:
                     print(f"{user}\t{user_line}")
-                else:
-                    print(f"{user}\t0\t{user_path}")
+                    measured += 1
         except OSError:
             pass
+    print("---ALL_HOMES_STATUS---")
+    if not users:
+        state = "unavailable"
+    elif measured == len(users):
+        state = "complete"
+    else:
+        state = "partial"
+    print(f"{state}\t{measured}\t{len(users)}")
 
 
 if __name__ == "__main__":

@@ -1617,6 +1617,7 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
     disks_by_mount: dict[str, dict[str, Any]] = {}
     home_disk = None
     all_homes: list[dict[str, Any]] = []
+    all_homes_status: dict[str, Any] | None = None
     section = "gpu"
 
     for raw in stdout.splitlines():
@@ -1640,6 +1641,9 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
             continue
         if line == "---ALL_HOMES---":
             section = "all_homes"
+            continue
+        if line == "---ALL_HOMES_STATUS---":
+            section = "all_homes_status"
             continue
 
         if section == "gpu":
@@ -1767,6 +1771,21 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
                 "used_bytes": used_b,
                 "path": path,
             })
+        elif section == "all_homes_status":
+            # state<TAB>measured-home-count<TAB>visible-home-count
+            parts = line.split("\t", 2)
+            if len(parts) != 3 or parts[0] not in {"complete", "partial", "disabled", "unavailable"}:
+                continue
+            try:
+                measured = int(parts[1])
+                total = int(parts[2])
+            except ValueError:
+                continue
+            all_homes_status = {
+                "state": parts[0],
+                "measured": max(measured, 0),
+                "total": max(total, 0),
+            }
 
     if not disk and disks:
         disk = disks[0]
@@ -1815,6 +1834,7 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
         "disks": disks,
         "home_disk": home_disk,
         "all_homes": all_homes,
+        "all_homes_status": all_homes_status,
         "gpu_count": len(gpus),
     }
 
