@@ -265,8 +265,12 @@ def main() -> None:
                 user_path = os.path.join(home_dir, user)
                 user_line = _du_size_line(user_path, timeout=10)
                 if user_line:
-                    print(f"{user}\t{user_line}")
+                    print(f"{user}\t{user_line}\tok")
                     measured += 1
+                else:
+                    # Keep the user visible in the UI without pretending an
+                    # unreadable directory has a zero-byte size.
+                    print(f"{user}\t\t{user_path}\tunavailable")
         except OSError:
             pass
     print("---ALL_HOMES_STATUS---")

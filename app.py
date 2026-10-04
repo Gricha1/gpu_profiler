@@ -1756,20 +1756,35 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
                 "path": path,
             }
         elif section == "all_homes":
-            # Format: username\tSIZE\tPATH
-            parts = line.split("\t", 2)
+            # Format: username<TAB>SIZE<TAB>PATH<TAB>ok|unavailable.
+            # Older agents omit the last field and are treated as successful.
+            parts = line.split("\t", 3)
             if len(parts) < 2:
                 continue
             username = parts[0].strip()
+            if not username:
+                continue
+            path = parts[2].strip() if len(parts) > 2 else ""
+            status = parts[3].strip() if len(parts) > 3 else "ok"
+            if status == "unavailable":
+                all_homes.append({
+                    "username": username,
+                    "used_bytes": None,
+                    "path": path,
+                    "available": False,
+                })
+                continue
+            if status != "ok":
+                continue
             try:
                 used_b = int(parts[1].strip().split()[0])
             except ValueError:
                 continue
-            path = parts[2].strip() if len(parts) > 2 else ""
             all_homes.append({
                 "username": username,
                 "used_bytes": used_b,
                 "path": path,
+                "available": True,
             })
         elif section == "all_homes_status":
             # state<TAB>measured-home-count<TAB>visible-home-count
@@ -1798,10 +1813,16 @@ def _parse_output(host: str, stdout: str, stderr: str, rc: int) -> dict[str, Any
     # Calculate disk_pct for all homes
     if disk and disk.get("total_bytes"):
         for h in all_homes:
+            if not h.get("available", True):
+                continue
             h["disk_pct"] = round(
                 100.0 * h["used_bytes"] / disk["total_bytes"], 2
             )
-        all_homes.sort(key=lambda h: -h["used_bytes"])
+        all_homes.sort(key=lambda h: (
+            not h.get("available", True),
+            -(h["used_bytes"] or 0) if h.get("available", True) else 0,
+            h["username"].casefold(),
+        ))
 
     gpus: list[dict[str, Any]] = []
     for g in gpus_raw:

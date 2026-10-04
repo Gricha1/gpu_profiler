@@ -179,7 +179,10 @@
       
       const selected = server.all_homes.find(h => h.username === username);
       if (!selected) return;
-      
+      if (!selected.available) {
+        detailsDiv.innerHTML = `<div class="home-unavailable">Недоступно SSH-пользователю</div>`;
+        return;
+      }
       const homePct = selected.disk_pct != null ? selected.disk_pct : 0;
       detailsDiv.innerHTML = `<div class="row-label"><span title="${escapeHtml(selected.path || "")}">${fmtGiB(selected.used_bytes)}${selected.disk_pct != null ? ` · ${selected.disk_pct}% диска` : ""}</span></div>${bar(Math.min(homePct, 100), "home")}`;
     }
@@ -387,18 +390,13 @@
             body += `<div class="empty">DISK: нет данных</div>`;
           }
 
-          const homeScan = s.all_homes_status;
-          const homeScanNote = homeScan && homeScan.state === "partial"
-            ? `<div class="home-scan-note">Измерено home: ${homeScan.measured} из ${homeScan.total}; остальные недоступны SSH-пользователю.</div>`
-            : homeScan && homeScan.state === "unavailable"
-              ? `<div class="home-scan-note">Список home недоступен SSH-пользователю.</div>`
-              : "";
           if (s.all_homes && s.all_homes.length > 1) {
             const savedSelection = localStorage.getItem(`home_usage_${s.host}`);
             const defaultUsername = savedSelection && s.all_homes.some(h => h.username === savedSelection) 
               ? savedSelection 
               : s.all_homes[0].username;
             const selectedHome = s.all_homes.find(h => h.username === defaultUsername) || s.all_homes[0];
+            const homeAvailable = selectedHome.available !== false;
             const homePct = selectedHome.disk_pct != null ? selectedHome.disk_pct : 0;
             
             body += `
@@ -406,13 +404,14 @@
                 <div class="row-label">
                   <span>HOME USAGE</span>
                   <select class="home-user-select" data-host="${escapeHtml(s.host)}" onchange="updateHomeDisplay(this)">
-                    ${s.all_homes.map(h => `<option value="${escapeHtml(h.username)}"${h.username === defaultUsername ? " selected" : ""}>${escapeHtml(h.username)} — ${fmtGiB(h.used_bytes)}${h.disk_pct != null ? ` · ${h.disk_pct}%` : ""}</option>`).join("")}
+                    ${s.all_homes.map(h => `<option value="${escapeHtml(h.username)}"${h.username === defaultUsername ? " selected" : ""}>${escapeHtml(h.username)} — ${h.available === false ? "недоступно" : `${fmtGiB(h.used_bytes)}${h.disk_pct != null ? ` · ${h.disk_pct}%` : ""}`}</option>`).join("")}
                   </select>
                 </div>
                 <div class="home-details" id="home-details-${escapeHtml(s.host)}">
-                  <div class="row-label"><span title="${escapeHtml(selectedHome.path || "")}">${fmtGiB(selectedHome.used_bytes)}${selectedHome.disk_pct != null ? ` · ${selectedHome.disk_pct}% диска` : ""}</span></div>${bar(Math.min(homePct, 100), "home")}
+                  ${homeAvailable
+                    ? `<div class="row-label"><span title="${escapeHtml(selectedHome.path || "")}">${fmtGiB(selectedHome.used_bytes)}${selectedHome.disk_pct != null ? ` · ${selectedHome.disk_pct}% диска` : ""}</span></div>${bar(Math.min(homePct, 100), "home")}`
+                    : `<div class="home-unavailable" title="${escapeHtml(selectedHome.path || "")}">Недоступно SSH-пользователю</div>`}
                 </div>
-                ${homeScanNote}
               </div>`;
           } else if (s.home_disk) {
             const homePct = s.home_disk.disk_pct != null ? s.home_disk.disk_pct : 0;
@@ -423,10 +422,9 @@
               <div class="ram">
                 <div class="row-label"><span>MY HOME</span><span title="${escapeHtml(s.home_disk.path || "")}">${homeLabel}</span></div>
                 ${bar(Math.min(homePct, 100), "home")}
-                ${homeScanNote}
               </div>`;
           } else {
-            body += `<div class="empty">HOME: нет данных</div>${homeScanNote}`;
+            body += `<div class="empty">HOME: нет данных</div>`;
           }
         }
 

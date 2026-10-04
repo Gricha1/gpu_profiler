@@ -5,11 +5,12 @@ from __future__ import annotations
 import app
 
 
-def test_parse_home_usage_keeps_only_measured_homes() -> None:
+def test_parse_home_usage_marks_unreadable_homes_unavailable() -> None:
     payload = """---HOME---
 38869454029\t/home/gorbov_gv
 ---ALL_HOMES---
 gorbov_gv\t38869454029\t/home/gorbov_gv
+other_user\t\t/home/other_user\tunavailable
 ---ALL_HOMES_STATUS---
 partial\t1\t24
 """
@@ -17,9 +18,11 @@ partial\t1\t24
     result = app._parse_output("aicenter3", payload, "", 0)
 
     assert result["all_homes"] == [{
-        "username": "gorbov_gv",
-        "used_bytes": 38869454029,
-        "path": "/home/gorbov_gv",
+        "username": "gorbov_gv", "used_bytes": 38869454029,
+        "path": "/home/gorbov_gv", "available": True,
+    }, {
+        "username": "other_user", "used_bytes": None,
+        "path": "/home/other_user", "available": False,
     }]
     assert result["all_homes_status"] == {
         "state": "partial", "measured": 1, "total": 24,
