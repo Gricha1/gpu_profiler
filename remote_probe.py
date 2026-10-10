@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Run on remote host: GPU stats, compute processes + owners, RAM."""
 
+# The controller sends this script over SSH to hosts which may still run
+# Python 3.8.  Postpone evaluation of ``X | None`` annotations so those
+# remote probes remain compatible with Python 3.7+.
+from __future__ import annotations
+
 import csv
 import io
 import json
