@@ -1864,8 +1864,15 @@ def _ssh_run_metrics(
     target: str,
     extra_opts: list[str],
     connect_timeout: int,
+    probe_env: dict[str, str] | None = None,
 ) -> tuple[int, bytes, bytes]:
     """Run remote_probe.py over SSH (thread-safe; avoids Windows asyncio subprocess issues)."""
+    remote_env = [
+        f"{key}={value}"
+        for key, value in (probe_env or {}).items()
+        if re.fullmatch(r"[A-Z_][A-Z0-9_]*", str(key))
+        and "\x00" not in str(value)
+    ]
     cmd = [
         "ssh",
         "-o",
@@ -1878,6 +1885,8 @@ def _ssh_run_metrics(
         "StrictHostKeyChecking=accept-new",
         *extra_opts,
         target,
+        "env",
+        *remote_env,
         "python3",
         "-",
     ]
@@ -1902,6 +1911,8 @@ async def _probe_host(host: str) -> dict[str, Any]:
     t0 = time.perf_counter()
     path_cfg = load_host_paths().get(host) or []
     prefer = next((p for p in path_cfg if p.get("prefer_for_probe")), None)
+    probe_path = prefer or next((p for p in path_cfg if p.get("kind", "ssh") == "ssh"), {})
+    probe_env = probe_path.get("probe_env") if isinstance(probe_path.get("probe_env"), dict) else {}
     if prefer and prefer.get("kind", "ssh") == "ssh":
         target = str(prefer.get("ssh_target") or host)
         extra_opts = list(prefer.get("ssh_opts") or [])
@@ -1918,7 +1929,7 @@ async def _probe_host(host: str) -> dict[str, Any]:
     )
 
     rc, stdout_b, stderr_b = await asyncio.to_thread(
-        _ssh_run_metrics, target, extra_opts, connect_timeout
+        _ssh_run_metrics, target, extra_opts, connect_timeout, probe_env
     )
 
     # Successful regular collection does not fan out over every alternate
@@ -1946,7 +1957,7 @@ async def _probe_host(host: str) -> dict[str, Any]:
                 else SSH_TIMEOUT_SEC
             )
             rc, stdout_b, stderr_b = await asyncio.to_thread(
-                _ssh_run_metrics, target, extra_opts, connect_timeout
+                _ssh_run_metrics, target, extra_opts, connect_timeout, probe_env
             )
 
     if rc == -1 and not (stdout_b or b"").strip():
