@@ -53,6 +53,28 @@ def _cpu_pct() -> float | None:
     return round(float(psutil.cpu_percent(interval=None)), 1)
 
 
+def _system_disk() -> dict[str, Any] | None:
+    """Usage of the volume that contains this GPU Profiler installation."""
+    try:
+        import psutil
+    except ImportError:
+        return None
+    try:
+        mount = Path.cwd().anchor or os.path.abspath(os.sep)
+        usage = psutil.disk_usage(mount)
+    except (OSError, ValueError):
+        return None
+    return {
+        "total_bytes": int(usage.total),
+        "used_bytes": int(usage.used),
+        "available_bytes": int(usage.free),
+        "used_pct": round(float(usage.percent), 1),
+        "free_pct": round(100.0 - float(usage.percent), 1),
+        "mount": mount,
+        "filesystem": None,
+    }
+
+
 def _ram_top(limit: int = 15) -> list[dict[str, Any]]:
     try:
         import psutil
@@ -306,6 +328,7 @@ def probe_local() -> dict[str, Any]:
     try:
         ram = _ram()
         gpus = _gpus()
+        disk = _system_disk()
         ram_top = _ram_top(15)
         cpu_pct = _cpu_pct()
         return {
@@ -318,7 +341,8 @@ def probe_local() -> dict[str, Any]:
             "ram": ram,
             "cpu_pct": cpu_pct,
             "ram_top": ram_top,
-            "disk": None,
+            "disk": disk,
+            "disks": [disk] if disk else [],
             "home_disk": None,
             "gpu_count": len(gpus),
             "latency_ms": int((time.perf_counter() - t0) * 1000),
@@ -335,6 +359,7 @@ def probe_local() -> dict[str, Any]:
             "cpu_pct": None,
             "ram_top": [],
             "disk": None,
+            "disks": [],
             "home_disk": None,
             "gpu_count": 0,
             "latency_ms": int((time.perf_counter() - t0) * 1000),

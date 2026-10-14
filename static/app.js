@@ -334,6 +334,25 @@
       return `<div class="path-list" title="Пути до хоста (IP / порт)">${chips}</div>`;
     }
 
+    const GPU_IDLE_MAX_SECONDS = 6 * 60 * 60;
+    function formatIdleDuration(seconds) {
+      const total = Math.max(0, Math.floor(Number(seconds) || 0));
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      if (hours) return `${hours} ч ${String(minutes).padStart(2, "0")} мин`;
+      return `${minutes} мин`;
+    }
+
+    function renderDiskUsage(d) {
+      const label = d.mount ? `DISK ${d.mount}` : "DISK";
+      return `
+        <div class="ram disk-usage">
+          <div class="row-label"><span>${escapeHtml(label)}</span><span>свободно ${fmtGiB(d.available_bytes)}</span></div>
+          <div class="row-label disk-used"><span></span><span>занято ${fmtGiB(d.used_bytes)} / ${fmtGiB(d.total_bytes)} · ${d.used_pct}%</span></div>
+          ${bar(d.used_pct, "disk")}
+        </div>`;
+    }
+
     function renderServer(s) {
       const isLocal = !!s.local || s.host === "local";
       const title = isLocal
@@ -369,6 +388,10 @@
           body += `<div class="empty">RAM: нет данных</div>`;
         }
 
+        if (isLocal && s.disk) {
+          body += renderDiskUsage(s.disk);
+        }
+
         if (isLocal && s.ram_top && s.ram_top.length) {
           body += renderRamTopSlider(s.ram_top);
         }
@@ -378,14 +401,7 @@
             ? s.disks
             : (s.disk ? [s.disk] : []);
           if (diskList.length) {
-            body += diskList.map(d => {
-              const label = d.mount ? `DISK ${d.mount}` : "DISK";
-              return `
-              <div class="ram">
-                <div class="row-label"><span>${escapeHtml(label)}</span><span>свободно ${fmtGiB(d.available_bytes)} · занято ${fmtGiB(d.used_bytes)} / ${fmtGiB(d.total_bytes)} · ${d.used_pct}%</span></div>
-                ${bar(d.used_pct, "disk")}
-              </div>`;
-            }).join("");
+            body += diskList.map(renderDiskUsage).join("");
           } else {
             body += `<div class="empty">DISK: нет данных</div>`;
           }
@@ -433,6 +449,17 @@
         } else {
           body += `<div class="gpus">` + s.gpus.map(g => {
             const users = g.users || [];
+            // The backend advances this only after a successful live probe.
+            // A stale snapshot must not appear to become increasingly idle.
+            const idleSeconds = Number(g.idle_seconds || 0);
+            const hasIdleTimer = !s.stale && g.idle_tracking && g.idle_since != null;
+            const idleLevel = hasIdleTimer ? Math.min(1, idleSeconds / GPU_IDLE_MAX_SECONDS) : 0;
+            const idleClass = hasIdleTimer ? " idle-warning" : "";
+            const idleStyle = hasIdleTimer ? ` style="--idle-level:${idleLevel.toFixed(4)};--idle-start-alpha:${(0.04 + 0.40 * idleLevel).toFixed(3)};--idle-end-alpha:${(0.03 + 0.33 * idleLevel).toFixed(3)};--idle-border-alpha:${(0.16 + 0.45 * idleLevel).toFixed(3)};--idle-glow-alpha:${(0.05 + 0.22 * idleLevel).toFixed(3)};--idle-glow-size:${(3 + 10 * idleLevel).toFixed(1)}px"` : "";
+            const idleLabel = hasIdleTimer
+              ? `<span class="gpu-idle-label${idleLevel >= 1 ? " critical" : ""}">Простой ${formatIdleDuration(idleSeconds)}</span>`
+              : "";
+            const idleStatus = idleLabel || `<span class="users-empty">idle</span>`;
             let usersHtml;
             let vramBlock = "";
             if (isLocal) {
@@ -452,7 +479,7 @@
               } else if (busy) {
                 usersHtml = `<span class="users-empty">занята (процессы не видны / WDDM)</span>`;
               } else {
-                usersHtml = `<span class="users-empty">idle</span>`;
+                usersHtml = idleStatus;
               }
               vramBlock = renderVramTopSlider(s.host, g.index, procs);
             } else {
@@ -461,10 +488,10 @@
                     const chipTitle = `${u.user} · ${fmtMiB(u.mem_mib)}`;
                     return `<span class="user-chip" title="${escapeHtml(chipTitle)}">${escapeHtml(u.user)} <span class="mem">${(u.mem_mib/1024).toFixed(1)}G</span></span>`;
                   }).join("")
-                : `<span class="users-empty">idle</span>`;
+                : idleStatus;
             }
             return `
-            <div class="gpu">
+            <div class="gpu${idleClass}"${idleStyle}>
               <div class="gpu-top">
                 <strong>GPU ${g.index}</strong>
                 <span class="gpu-name" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</span>

@@ -267,6 +267,7 @@ For each host in `HOSTS = [lab_comp, ml3, ml4, aicenteritl, aicenter1, aicenter2
 | GPU cards    | `nvidia-smi --query-gpu=index,name,uuid,memory.used,memory.total,utilization.gpu`  |
 | GPU procs    | `nvidia-smi --query-compute-apps=…` + Windows `typeperf \\GPU Process Memory(*)\\Dedicated Usage` to fill WDDM N/A values |
 | Users        | Derived from `/proc/<pid>/status` Uid → `pwd.getpwuid` (remote) or `psutil` (local) |
+| GPU idle timer | `gpu_idle_tracker.py` persists `idle_since` per host/GPU UUID on each successful live probe. A compute process or utilisation above 1% resets it; missing/stale probes never advance it. The UI progressively reddens an idle GPU until maximum intensity at 6 hours. |
 | RAM          | `free -b` (remote) / `psutil.virtual_memory()` (local)                            |
 | Top RAM procs| `psutil.process_iter` (top 15 by RSS) on local; for remote only GPU procs are returned |
 | Disk         | `df -B1 -P $HOME /data /data2` (remote)                                            |

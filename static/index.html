@@ -581,7 +581,7 @@
       border-color: rgba(110, 140, 220, 0.28);
     }
     .server-aicenteritl {
-      background: linear-gradient(165deg, rgba(52, 40, 28, 0.95), rgba(18, 14, 12, 0.92));
+      background: linear-gradient(165deg, rgba(29, 37, 49, 0.95), rgba(13, 18, 27, 0.92));
       border-color: rgba(210, 150, 80, 0.28);
     }
     .server-aicenter1 {
@@ -593,7 +593,7 @@
       border-color: rgba(80, 170, 200, 0.28);
     }
     .server-aicenter3 {
-      background: linear-gradient(165deg, rgba(48, 30, 42, 0.95), rgba(16, 12, 18, 0.92));
+      background: linear-gradient(165deg, rgba(29, 37, 49, 0.95), rgba(13, 18, 27, 0.92));
       border-color: rgba(190, 110, 150, 0.28);
     }
     .server-h200 {
@@ -906,12 +906,37 @@
       background: var(--bg-gpu);
       border: 1px solid var(--line);
       border-radius: 10px;
+      transition: background 350ms ease, border-color 350ms ease, box-shadow 350ms ease;
+    }
+    .gpu.idle-warning {
+      --idle-level: 0;
+      background: linear-gradient(
+        135deg,
+        rgba(220, 38, 38, var(--idle-start-alpha)),
+        rgba(105, 15, 22, var(--idle-end-alpha))
+      ), var(--bg-gpu);
+      border-color: rgba(255, 93, 93, var(--idle-border-alpha));
+      box-shadow: 0 0 var(--idle-glow-size) rgba(239, 68, 68, var(--idle-glow-alpha));
+    }
+    .gpu-idle-label {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #ffc0c0;
+      white-space: nowrap;
+    }
+    .gpu-idle-label.critical {
+      color: #fff0f0;
+    }
+    .disk-used {
+      margin-top: 0.18rem;
     }
     .gpu-top {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
       gap: 0.5rem;
+      min-width: 0;
       margin-bottom: 0.45rem;
       font-size: 0.84rem;
     }
@@ -922,10 +947,12 @@
     }
     .gpu-name {
       color: var(--muted);
+      flex: 1 1 0;
+      min-width: 0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 62%;
+      max-width: none;
       font-size: 0.78rem;
     }
     .users {
@@ -1617,6 +1644,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=24"></script>
+  <script src="/static/app.js?v=29"></script>
 </body>
 </html>

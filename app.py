@@ -51,6 +51,7 @@ from services.quotas import aggregator as quotas_aggregator
 import debug_app
 import user_tracking
 import gpu_metrics_history
+import gpu_idle_tracker
 import ssh_runtime
 import user_config
 
@@ -2015,6 +2016,9 @@ def _apply_probe_result(host: str, generation: int, result: dict[str, Any]) -> b
     now = time.time()
     previous = _host_cache.get(host) or {}
     if result.get("ok"):
+        # Only a successful, current probe may advance an idle timer. Failed
+        # probes retain the prior payload without claiming more idle time.
+        gpu_idle_tracker.annotate_idle(host, result.get("gpus") or [], now)
         committed = {
             **result,
             "connection_ok": True,
@@ -2134,6 +2138,10 @@ async def _refresh_local() -> None:
     _local_refreshing = True
     try:
         local = await asyncio.to_thread(probe_local)
+        if local.get("ok"):
+            await asyncio.to_thread(
+                gpu_idle_tracker.annotate_idle, "local", local.get("gpus") or []
+            )
         _cache["local"] = local
         _cache["local_ts"] = time.time()
     finally:
@@ -2913,6 +2921,7 @@ async def api_agent_metrics(hostname: str, request: Request) -> dict[str, Any]:
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result.get("error") or "invalid metrics")
     now = time.time()
+    gpu_idle_tracker.annotate_idle(hostname, result.get("gpus") or [], now)
     path = {
         "id": f"agent-{hostname}", "label": "Metrics agent", "kind": "agent",
         "ok": True, "ms": None, "detail": "heartbeat received",
